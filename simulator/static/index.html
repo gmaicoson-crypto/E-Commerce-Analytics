@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>数据模拟生成器 · ecommerce-vue-ts</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>数据模拟生成器</h1>
+      <span class="sub">ecommerce-vue-ts · simulator:8001</span>
+    </div>
+    <div class="meta">
+      <span id="status" class="status">未连接</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- 计数 -->
+    <section class="counts card">
+      <div class="count-grid">
+        <div class="count-cell"><div class="label">客户</div><div class="value" id="cnt-customers">—</div></div>
+        <div class="count-cell"><div class="label">商品</div><div class="value" id="cnt-products">—</div></div>
+        <div class="count-cell"><div class="label">订单</div><div class="value" id="cnt-orders">—</div></div>
+        <div class="count-cell"><div class="label">退款</div><div class="value" id="cnt-refunds">—</div></div>
+        <div class="count-cell"><div class="label">财务流水</div><div class="value" id="cnt-finance">—</div></div>
+        <div class="count-cell"><div class="label">通知</div><div class="value" id="cnt-notifications">—</div></div>
+      </div>
+    </section>
+
+    <!-- 板块切换 -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="customer">客户</button>
+      <button class="tab" data-tab="product">商品</button>
+      <button class="tab" data-tab="order">订单</button>
+      <button class="tab" data-tab="refund">退款</button>
+      <button class="tab" data-tab="finance">财务</button>
+      <button class="tab" data-tab="notification">通知</button>
+      <button class="tab" data-tab="automation">自动化</button>
+    </nav>
+
+    <!-- 通用 CRUD pane(6 个实体共用) -->
+    <section class="card pane" id="crud-pane">
+      <div class="pane-head">
+        <div class="filter-row" id="filter-row"></div>
+        <button class="btn primary" id="btn-new">+ 新增</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="table">
+          <thead><tr id="thead-row"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </section>
+
+    <!-- 自动化 pane(独立布局,无表格) -->
+    <section class="card auto-pane" id="auto-pane" style="display:none">
+      <div class="auto-status">
+        <span class="auto-dot" id="auto-dot"></span>
+        <span id="auto-state-text">未启动</span>
+        <span class="auto-time" id="auto-elapsed"></span>
+      </div>
+
+      <div class="auto-controls">
+        <label>每分钟事件数
+          <input id="auto-rate" type="number" min="6" max="600" value="60" />
+        </label>
+        <label>注册占比(%)
+          <input id="auto-reg" type="number" min="0" max="100" value="25" />
+        </label>
+        <div class="auto-btns">
+          <button class="btn primary" id="auto-start">▶ 启动</button>
+          <button class="btn danger"  id="auto-stop" disabled>■ 停止</button>
+        </div>
+      </div>
+
+      <div class="auto-stats">
+        <div class="auto-stat"><div class="lbl">已注册</div><div class="val" id="auto-registered">0</div></div>
+        <div class="auto-stat"><div class="lbl">已下单</div><div class="val" id="auto-ordered">0</div></div>
+        <div class="auto-stat warn"><div class="lbl">跳过(无客户)</div><div class="val" id="auto-skip-cust">0</div></div>
+        <div class="auto-stat warn"><div class="lbl">跳过(无商品)</div><div class="val" id="auto-skip-prod">0</div></div>
+      </div>
+
+      <p class="auto-hint">
+        提示:首次启动前请先在「商品」tab 创建至少 1 个上架商品。订单事件需要 on_sale 商品才能成交;
+        「跳过」计数能告诉你为什么订单数没涨。下单 status 会按 pending / paid / shipped / completed
+        加权随机,completed 自动级联 3 条 finance(销售收入 + 物流 + 广告)。
+      </p>
+    </section>
+
+    <!-- 操作日志 -->
+    <section class="card log-card">
+      <div class="log-head">
+        <h2>操作日志</h2>
+        <button class="btn ghost small" id="btn-clear-log">清空</button>
+      </div>
+      <pre id="log" class="log"></pre>
+    </section>
+  </main>
+
+  <!-- 共享 Modal(新增 / 编辑) -->
+  <div class="modal-mask" id="modal-mask">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modal-title">新增</h3>
+        <button class="modal-close" id="modal-close">×</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="modal-cancel">取消</button>
+        <button class="btn primary" id="modal-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

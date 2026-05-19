@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>电商数据分析平台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --sidebar-w: 68px;
+      --header-h: 60px;
+      --green: #52b788;
+      --green-dark: #3a9068;
+      --green-deep: #2d6a4f;
+      --green-50: #f0fdf4;
+      --green-100: #dcfce7;
+      --bg: #f2f8f4;
+      --card: #ffffff;
+      --text1: #1a2b1e;
+      --text2: #5a6e62;
+      --text3: #98a89e;
+      --border: #e0ece5;
+      --shadow: 0 2px 12px rgba(52,107,80,0.08);
+      --shadow-lg: 0 8px 32px rgba(52,107,80,0.13);
+      --r: 14px;
+      --r-sm: 8px;
+    }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text1);
+      overflow: hidden;
+    }
+    #app { display: flex; height: 100vh; overflow: hidden; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeSlide 0.28s ease-out; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50%       { opacity: 1;   transform: scale(1.1); }
+    }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; }
+    input, select, textarea { font-family: inherit; }
+
+    /* ─── 通用布局/工具类 (跨视图复用) ─────────────────────────────── */
+    .mb16          { margin-bottom: 16px; }
+    .kpi-row       { display: flex; gap: 16px; margin-bottom: 20px; }
+    .grid-equal-2  { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+    .chart-center  { height: 100%; display: flex; flex-direction: column; justify-content: center; }
+    .ico-btn       {
+      background: transparent; border: none;
+      width: 26px; height: 26px; border-radius: 6px;
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .ico-btn:hover { background: var(--bg); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

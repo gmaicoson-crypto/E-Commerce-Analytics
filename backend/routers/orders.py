@@ -1,0 +1,294 @@
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, date
+from decimal import Decimal
+from database import get_db
+from dependencies import check_module_permission
+from models import Order, Refund, Customer
+from utils import success_response, parse_date_range
+
+router = APIRouter()
+
+
+@router.get("/overview", response_model=dict)
+async def orders_overview(
+    date_range: str = Query("today"),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    current_user=Depends(check_module_permission("order_analysis")),
+    db: Session = Depends(get_db)
+):
+    """Get order overview statistics."""
+    start, end = parse_date_range(date_range, start_date, end_date)
+
+    orders = db.query(Order).filter(
+        Order.created_at >= datetime.combine(start, datetime.min.time()),
+        Order.created_at <= datetime.combine(end, datetime.max.time())
+    ).all()
+
+    total_orders = len(orders)
+    pending = len([o for o in orders if o.status == "pending"])
+    paid = len([o for o in orders if o.status == "paid"])
+    shipped = len([o for o in orders if o.status == "shipped"])
+    completed = len([o for o in orders if o.status == "completed"])
+    refunded = len([o for o in orders if o.status == "refunded"])
+
+    total_amount = sum(o.total_amount for o in orders) or Decimal(0)
+    avg_order = total_amount / total_orders if total_orders > 0 else Decimal(0)
+
+    return success_response({
+        "period": {
+            "start": start.isoformat(),
+            "end": end.isoformat()
+        },
+        "total_orders": total_orders,
+        "pending_count": pending,
+        "paid_count": paid,
+        "shipped_count": shipped,
+        "completed_count": completed,
+        "refunded_count": refunded,
+        "total_amount": float(total_amount),
+        "avg_order_value": float(avg_order)
+    })
+
+
+@router.get("/by-status", response_model=dict)
+async def orders_by_status(
+    date_range: str = Query("today"),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    current_user=Depends(check_module_permission("order_analysis")),
+    db: Session = Depends(get_db)
+):
+    """Get orders distribution by status."""
+    start, end = parse_date_range(date_range, start_date, end_date)
+
+    orders = db.query(Order).filter(
+        Order.created_at >= datetime.combine(start, datetime.min.time()),
+        Order.created_at <= datetime.combine(end, datetime.max.time())
+    ).all()
+
+    status_dist = {}
+    for order in orders:
+        status = order.status
+        if status not in status_dist:
+            status_dist[status] = {"count": 0, "amount": Decimal(0)}
+        status_dist[status]["count"] += 1
+        status_dist[status]["amount"] += order.total_amount
+
+    data = [
+        {
+            "status": status,
+            "count": stats["count"],
+            "amount": float(stats["amount"]),
+            "percentage": round((stats["count"] / len(orders) * 100), 2) if orders else 0
+        }
+        for status, stats in status_dist.items()
+    ]
+
+    return success_response({
+        "period": {
+            "start": start.isoformat(),
+            "end": end.isoformat()
+        },
+        "data": data
+    })
+
+
+@router.get("/funnel", response_model=dict)
+async def order_funnel(
+    date_range: str = Query("today"),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    current_user=Depends(check_module_permission("order_analysis")),
+    db: Session = Depends(get_db)
+):
+    """Get order conversion funnel."""
+    start, end = parse_date_range(date_range, start_date, end_date)
+
+    all_orders = db.query(Order).filter(
+        Order.created_at >= datetime.combine(start, datetime.min.time()),
+        Order.created_at <= datetime.combine(end, datetime.max.time())
+    ).all()
+
+    total = len(all_orders)
+    pending = len([o for o in all_orders if o.status == "pending"])
+    paid = len([o for o in all_orders if o.status in ["paid", "shipped", "completed"]])
+    shipped = len([o for o in all_orders if o.status in ["shipped", "completed"]])
+    completed = len([o for o in all_orders if o.status == "completed"])
+
+    funnel_data = [
+        {"stage": "All Orders", "count": total, "percentage": 100},
+        {"stage": "Paid", "count": paid, "percentage": round((paid / total * 100), 2) if total > 0 else 0},
+        {"stage": "Shipped", "count": shipped, "percentage": round((shipped / total * 100), 2) if total > 0 else 0},
+        {"stage": "Completed", "count": completed, "percentage": round((completed / total * 100), 2) if total > 0 else 0}
+    ]
+
+    return success_response({
+        "period": {
+            "start": start.isoformat(),
+            "end": end.isoformat()
+        },
+        "data": funnel_data
+    })
+
+
+@router.get("/refund-analysis", response_model=dict)
+async def refund_analysis(
+    date_range: str = Query("last_30_days"),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    current_user=Depends(check_module_permission("order_analysis")),
+    db: Session = Depends(get_db)
+):
+    """Get refund analysis."""
+    start, end = parse_date_range(date_range, start_date, end_date)
+
+    refunds = db.query(Refund).filter(
+        Refund.created_at >= datetime.combine(start, datetime.min.time()),
+        Refund.created_at <= datetime.combine(end, datetime.max.time())
+    ).all()
+
+    total_refund_amount = sum(r.refund_amount for r in refunds) or Decimal(0)
+    completed_refunds = [r for r in refunds if r.status == "completed"]
+    completed_amount = sum(r.refund_amount for r in completed_refunds) or Decimal(0)
+
+    # Refund reasons
+    reason_stats = {}
+    for refund in refunds:
+        reason = refund.reason
+        if reason not in reason_stats:
+            reason_stats[reason] = {"count": 0, "amount": Decimal(0)}
+        reason_stats[reason]["count"] += 1
+        reason_stats[reason]["amount"] += refund.refund_amount
+
+    # Get total orders in period for refund rate
+    total_orders = db.query(Order).filter(
+        Order.created_at >= datetime.combine(start, datetime.min.time()),
+        Order.created_at <= datetime.combine(end, datetime.max.time())
+    ).count()
+
+    return success_response({
+        "period": {
+            "start": start.isoformat(),
+            "end": end.isoformat()
+        },
+        "total_refunds": len(refunds),
+        "completed_refunds": len(completed_refunds),
+        "total_refund_amount": float(total_refund_amount),
+        "completed_refund_amount": float(completed_amount),
+        "refund_rate": round((len(refunds) / total_orders * 100), 2) if total_orders > 0 else 0,
+        "by_reason": [
+            {
+                "reason": reason,
+                "count": stats["count"],
+                "amount": float(stats["amount"])
+            }
+            for reason, stats in sorted(reason_stats.items(), key=lambda x: x[1]["count"], reverse=True)
+        ]
+    })
+
+
+@router.get("/timeline", response_model=dict)
+async def order_timeline(
+    days: int = Query(7, ge=1, le=90),
+    current_user=Depends(check_module_permission("order_analysis")),
+    db: Session = Depends(get_db)
+):
+    """Get order timeline - daily order count and amount."""
+    today = date.today()
+    start = today - timedelta(days=days - 1)  # 包含今天:共 days 天
+
+    timeline_data = []
+    for i in range(days):
+        day = start + timedelta(days=i)
+        orders = db.query(Order).filter(
+            Order.created_at >= datetime.combine(day, datetime.min.time()),
+            Order.created_at <= datetime.combine(day, datetime.max.time())
+        ).all()
+
+        daily_amount = sum(o.total_amount for o in orders) or Decimal(0)
+        timeline_data.append({
+            "date": day.isoformat(),
+            "order_count": len(orders),
+            "total_amount": float(daily_amount),
+            "avg_order_value": float(daily_amount / len(orders)) if orders else 0
+        })
+
+    return success_response({
+        "period_days": days,
+        "data": timeline_data
+    })
+
+
+@router.get("/list", response_model=dict)
+async def orders_list(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status_filter: str = Query(None, alias="status"),
+    current_user=Depends(check_module_permission("order_analysis")),
+    db: Session = Depends(get_db)
+):
+    """Get paginated order list."""
+    query = db.query(Order)
+    if status_filter:
+        query = query.filter(Order.status == status_filter)
+
+    total = query.count()
+    orders = query.order_by(Order.created_at.desc()).offset(
+        (page - 1) * page_size
+    ).limit(page_size).all()
+
+    data = []
+    for order in orders:
+        customer = order.customer
+        data.append({
+            "order_id": order.id,
+            "order_no": order.order_no,
+            "customer": customer.username if customer else "Unknown",
+            "total_amount": float(order.total_amount),
+            "status": order.status.value if hasattr(order.status, "value") else order.status,
+            "created_at": order.created_at.isoformat() if order.created_at else None
+        })
+
+    return success_response({
+        "data": data,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size
+        }
+    })
+
+
+@router.get("/large-orders", response_model=dict)
+async def large_orders(
+    min_amount: float = Query(1000),
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(check_module_permission("order_analysis")),
+    db: Session = Depends(get_db)
+):
+    """Get large orders above a certain amount."""
+    orders = db.query(Order).filter(
+        Order.total_amount >= Decimal(str(min_amount))
+    ).order_by(Order.total_amount.desc()).limit(limit).all()
+
+    data = []
+    for order in orders:
+        customer = order.customer
+        data.append({
+            "order_id": order.id,
+            "order_no": order.order_no,
+            "customer": customer.username if customer else "Unknown",
+            "total_amount": float(order.total_amount),
+            "status": order.status,
+            "created_at": order.created_at.isoformat() if order.created_at else None
+        })
+
+    return success_response({
+        "min_amount": min_amount,
+        "count": len(data),
+        "data": data
+    })

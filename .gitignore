@@ -1,0 +1,37 @@
+# 依赖
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# 打包产物
+dist/
+build/
+out/
+
+# 环境变量
+.env
+.env.local
+.env.development
+.env.production
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 日志
+*.log
+npm-debug.log*
+
+# 临时文件
+tmp/
+temp/
+
+# 系统文件
+Thumbs.db
+
+# claude
+.claude
