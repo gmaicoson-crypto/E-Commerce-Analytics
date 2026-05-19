@@ -14,6 +14,10 @@
       </span>
       <span class="kpi-label">{{ changeLabel ?? '同比' }}</span>
     </div>
+    <div v-else-if="subValue !== undefined && subValue !== ''" class="kpi-footer">
+      <span class="kpi-subval">{{ subValue }}</span>
+      <span class="kpi-label">{{ subLabel ?? '金额' }}</span>
+    </div>
   </div>
 </template>
 
@@ -26,6 +30,9 @@ const props = withDefaults(defineProps<{
   value: string | number
   change?: number
   changeLabel?: string
+  // 副值:当不传 change 时显示在 footer(如订单状态卡的金额合计)
+  subValue?: string
+  subLabel?: string
   icon?: string
   iconBg?: string
   prefix?: string
@@ -143,6 +150,7 @@ onBeforeUnmount(cancel)
 .kpi-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
 .kpi-value{ font-size: 26px; font-weight: 800; color: var(--text1); line-height: 1; font-variant-numeric: tabular-nums; transition: color .15s; }
 .kpi-value.ticking { color: var(--green-dark); }
-.kpi-footer{ display: flex; align-items: center; gap: 5px; }
+.kpi-footer{ display: flex; align-items: center; gap: 6px; }
 .kpi-label { font-size: 12px; color: var(--text3); }
+.kpi-subval { font-size: 13px; font-weight: 800; color: var(--text2); font-variant-numeric: tabular-nums; }
 </style>

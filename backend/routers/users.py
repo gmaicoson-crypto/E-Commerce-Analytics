@@ -7,7 +7,7 @@ from typing import Optional
 from database import get_db
 from dependencies import check_module_permission
 from models import Customer, Order, Order
-from utils import success_response, parse_date_range
+from utils import success_response, parse_date_range, new_customer_threshold, customer_type_label
 
 router = APIRouter()
 
@@ -15,7 +15,7 @@ router = APIRouter()
 @router.get("/customers/list", response_model=dict)
 def customers_list(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=10000),
     gender: Optional[str] = Query(None),
     age_group: Optional[str] = Query(None),
     province: Optional[str] = Query(None),
@@ -27,7 +27,11 @@ def customers_list(
     if gender:        q = q.filter(Customer.gender == gender)
     if age_group:     q = q.filter(Customer.age_group == age_group)
     if province:      q = q.filter(Customer.province == province)
-    if customer_type: q = q.filter(Customer.customer_type == customer_type)
+    # customer_type 不再读 DB 字段,改用注册时间窗 —— 注册 ≤ 30 天为 new,> 30 天为 returning
+    if customer_type == "new":
+        q = q.filter(Customer.registered_at >= new_customer_threshold())
+    elif customer_type == "returning":
+        q = q.filter(Customer.registered_at < new_customer_threshold())
     total = q.count()
     rows = q.order_by(Customer.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return success_response({
@@ -38,7 +42,8 @@ def customers_list(
                 "gender": c.gender.value if c.gender else None,
                 "age_group": c.age_group.value if c.age_group else None,
                 "province": c.province,
-                "customer_type": c.customer_type.value if c.customer_type else None,
+                # 实时按 registered_at 算,而不是读 DB 字段
+                "customer_type": customer_type_label(c.registered_at),
                 "registered_at": c.registered_at.isoformat() if c.registered_at else None,
             }
             for c in rows
@@ -59,12 +64,19 @@ async def users_overview(
 ):
     """Get user overview statistics."""
     total_customers = db.query(Customer).count()
-    new_customers = db.query(Customer).filter(
-        Customer.customer_type.in_(["new"])
-    ).count()
-    returning_customers = db.query(Customer).filter(
-        Customer.customer_type.in_(["returning"])
-    ).count()
+    threshold = new_customer_threshold()
+    # 新规则:注册 ≤ 30 天为新客,> 30 天自动转老客
+    new_customers = db.query(Customer).filter(Customer.registered_at >= threshold).count()
+    returning_customers = db.query(Customer).filter(Customer.registered_at < threshold).count()
+
+    # 复购客数:拥有 2+ 订单的客户数(按 customer_id 分组,having count >= 2)
+    repeat_customers = (
+        db.query(Order.customer_id)
+        .filter(Order.customer_id.isnot(None))
+        .group_by(Order.customer_id)
+        .having(func.count(Order.id) >= 2)
+        .count()
+    )
 
     # Get user activity
     today = date.today()
@@ -79,6 +91,7 @@ async def users_overview(
         "total_customers": total_customers,
         "new_customers": new_customers,
         "returning_customers": returning_customers,
+        "repeat_customers": repeat_customers,
         "active_today": active_today
     })
 
@@ -112,7 +125,7 @@ async def users_by_age_group(
 
 @router.get("/by-province", response_model=dict)
 async def users_by_province(
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),  # 中国大陆 + 港澳台共 34 个省级行政区,100 足够
     current_user=Depends(check_module_permission("user_analysis")),
     db: Session = Depends(get_db)
 ):

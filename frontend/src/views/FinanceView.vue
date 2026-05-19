@@ -84,7 +84,7 @@ async function loadData() {
       api.getFinanceKPI('90'),
       api.getFinanceTrend(30),
       api.getExpenseBreakdown('90'),
-      api.getFinanceRecords(1, 100),
+      api.getFinanceRecords(1, 10000),
     ])
 
     totalRev.value = kpi?.total_income ?? 0
@@ -199,11 +199,20 @@ const trendOpt = computed<EChartsOption>(() => {
 })
 
 const expOpt = computed<EChartsOption>(() => ({
-  series: [{ type:'pie', radius:['50%','72%'], data: expBreakdown.value.map((e, i) => ({
-    name: FIN_CATEGORY_ZH[e.category] ?? e.category,
-    value: e.percentage,
-    itemStyle:{ color: PAL_EXP[i % PAL_EXP.length] },
-  })), label:{show:false} }],
+  tooltip: { trigger:'item', formatter:(p:any)=>`${p.name}: ${p.value.toFixed(1)}% (${p.percent}%)` },
+  series: [{
+    type:'pie',
+    radius:['50%','72%'],
+    avoidLabelOverlap: true,
+    data: expBreakdown.value.map((e, i) => ({
+      name: FIN_CATEGORY_ZH[e.category] ?? e.category,
+      value: e.percentage,
+      itemStyle:{ color: PAL_EXP[i % PAL_EXP.length] },
+    })),
+    label: { show: true, formatter: '{b}\n{d}%', fontSize: 11, fontWeight: 700, color: 'inherit' },
+    labelLine: { show: true, length: 6, length2: 6, lineStyle: { color: 'inherit' } },
+    emphasis: { scale: true, scaleSize: 6, label: { fontSize: 13 } },
+  }],
 }))
 
 const cols: TableColumn[] = [

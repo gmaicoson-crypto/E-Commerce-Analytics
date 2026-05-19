@@ -6,9 +6,23 @@
 const $ = (s, root = document) => root.querySelector(s)
 const $$ = (s, root = document) => Array.from(root.querySelectorAll(s))
 
-const PROVINCES = ['北京', '上海', '广东', '浙江', '江苏', '福建', '湖北', '湖南', '四川', '山东']
+// 34 个省级行政区 —— 与后端 data_factory.PROVINCES、前端 chinaMap.PROVINCE_FULL_NAME 严格对齐
+const PROVINCES = [
+  // 直辖市
+  '北京', '上海', '天津', '重庆',
+  // 省
+  '河北', '山西', '辽宁', '吉林', '黑龙江',
+  '江苏', '浙江', '安徽', '福建', '江西',
+  '山东', '河南', '湖北', '湖南', '广东',
+  '海南', '四川', '贵州', '云南', '陕西',
+  '甘肃', '青海', '台湾',
+  // 自治区
+  '内蒙古', '广西', '西藏', '宁夏', '新疆',
+  // 特别行政区
+  '香港', '澳门',
+]
 const CATEGORIES = ['服装', '电子', '食品', '家居', '美妆']
-const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'completed', 'refunded']
+const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'completed', 'cancelled', 'refunded']
 const REFUND_STATUSES = ['processing', 'completed']
 const REFUND_REASONS = ['quality', 'wrong_item', 'no_reason', 'logistics']
 const FINANCE_TYPES = ['income', 'expense']

@@ -316,8 +316,8 @@ const catOpt = computed<EChartsOption>(() => ({
     radius:['45%','72%'],
     avoidLabelOverlap:true,
     data: catData.value.map((c,i)=>({ name:c.name, value:c.pct, itemStyle:{color:PAL[i]} })),
-    label: { show:true, formatter:'{b}\n{c}%', fontSize:11, fontWeight:700, color:'var(--text1)' },
-    labelLine: { show:true, length:8, length2:8, lineStyle:{color:'var(--text3)'} },
+    label: { show:true, formatter:'{b}\n{c}%', fontSize:11, fontWeight:700, color:'inherit' },
+    labelLine: { show:true, length:8, length2:8, lineStyle:{color:'inherit'} },
     emphasis: { scale:true, scaleSize:6, label:{ fontSize:13 } },
   }],
 }))

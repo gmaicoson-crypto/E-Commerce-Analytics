@@ -1,11 +1,39 @@
 <template>
   <div class="fade-in">
     <PageHeader title="订单分析" subtitle="订单状态、趋势及明细管理" />
-    <div class="kpi-row">
+    <div class="kpi-grid mb16">
       <KpiCard title="总订单数"     :value="overview.total_orders?.toLocaleString() ?? '—'"     icon="orders"      icon-bg="#dcfce7" />
-      <KpiCard title="已完成订单"   :value="overview.completed_count?.toLocaleString() ?? '—'"  icon="checkCircle" icon-bg="#dbeafe" />
-      <KpiCard title="退款订单数"   :value="overview.refunded_count?.toLocaleString() ?? '—'"   icon="refresh"     icon-bg="#fee2e2" />
       <KpiCard title="平均订单金额" :value="overview.avg_order_value?.toFixed(2) ?? '—'" prefix="¥" icon="finance" icon-bg="#ede9fe" />
+      <KpiCard
+        title="待支付" icon="orders" icon-bg="#fef9c3"
+        :value="overview.pending_count?.toLocaleString() ?? '—'"
+        :sub-value="`¥${fmtMoneyCN(overview.pending_amount ?? 0, { prefix: '' })}`" sub-label="金额"
+      />
+      <KpiCard
+        title="已支付" icon="orders" icon-bg="#dbeafe"
+        :value="overview.paid_count?.toLocaleString() ?? '—'"
+        :sub-value="`¥${fmtMoneyCN(overview.paid_amount ?? 0, { prefix: '' })}`" sub-label="金额"
+      />
+      <KpiCard
+        title="已发货" icon="orders" icon-bg="#ede9fe"
+        :value="overview.shipped_count?.toLocaleString() ?? '—'"
+        :sub-value="`¥${fmtMoneyCN(overview.shipped_amount ?? 0, { prefix: '' })}`" sub-label="金额"
+      />
+      <KpiCard
+        title="已完成" icon="checkCircle" icon-bg="#dcfce7"
+        :value="overview.completed_count?.toLocaleString() ?? '—'"
+        :sub-value="`¥${fmtMoneyCN(overview.completed_amount ?? 0, { prefix: '' })}`" sub-label="金额"
+      />
+      <KpiCard
+        title="已取消" icon="orders" icon-bg="#f3f4f6"
+        :value="overview.cancelled_count?.toLocaleString() ?? '—'"
+        :sub-value="`¥${fmtMoneyCN(overview.cancelled_amount ?? 0, { prefix: '' })}`" sub-label="金额"
+      />
+      <KpiCard
+        title="已退款" icon="refresh" icon-bg="#fee2e2"
+        :value="overview.refunded_count?.toLocaleString() ?? '—'"
+        :sub-value="`¥${fmtMoneyCN(overview.refunded_amount ?? 0, { prefix: '' })}`" sub-label="金额"
+      />
     </div>
     <div class="grid-side-main mb16">
       <AppCard title="订单状态分布">
@@ -55,11 +83,11 @@ import { useDebouncedReload } from '@/composables/useEventStream'
 import { useChartDetail } from '@/composables/useChartDetail'
 import AppIcon from '@/components/common/AppIcon.vue'
 
-const COLOR_MAP: Record<string,string> = { '待支付':'#f59e0b','已支付':'#3b82f6','已发货':'#8b5cf6','已完成':'#52b788','已退款':'#ef4444' }
-const BADGE_BG: Record<string,string>  = { '待支付':'#fef9c3','已支付':'#dbeafe','已发货':'#ede9fe','已完成':'#dcfce7','已退款':'#fee2e2' }
-const BADGE_FG: Record<string,string>  = { '待支付':'#ca8a04','已支付':'#1d4ed8','已发货':'#7c3aed','已完成':'#15803d','已退款':'#dc2626' }
+const COLOR_MAP: Record<string,string> = { '待支付':'#f59e0b','已支付':'#3b82f6','已发货':'#8b5cf6','已完成':'#52b788','已取消':'#9ca3af','已退款':'#ef4444' }
+const BADGE_BG: Record<string,string>  = { '待支付':'#fef9c3','已支付':'#dbeafe','已发货':'#ede9fe','已完成':'#dcfce7','已取消':'#f3f4f6','已退款':'#fee2e2' }
+const BADGE_FG: Record<string,string>  = { '待支付':'#ca8a04','已支付':'#1d4ed8','已发货':'#7c3aed','已完成':'#15803d','已取消':'#6b7280','已退款':'#dc2626' }
 
-const statusOpts = ['全部','待支付','已支付','已发货','已完成','已退款']
+const statusOpts = ['全部','待支付','已支付','已发货','已完成','已取消','已退款']
 const filter = ref('全部')
 
 const overview   = ref<Record<string, number>>({})
@@ -183,7 +211,15 @@ function openTimelineDetail() {
 
 const statusOpt = computed<EChartsOption>(() => ({
   tooltip: { trigger:'item', ...TOOLTIP_BASE },
-  series: [{ type:'pie', radius:['50%','72%'], data:statusDist.value.map(s=>({name:s.name,value:s.count,itemStyle:{color:COLOR_MAP[s.name]}})), label:{show:false}, emphasis:{scale:true,scaleSize:4} }],
+  series: [{
+    type:'pie',
+    radius:['50%','72%'],
+    avoidLabelOverlap: true,
+    data: statusDist.value.map(s=>({ name:s.name, value:s.count, itemStyle:{color:COLOR_MAP[s.name]} })),
+    label: { show: true, formatter: '{b}\n{d}%', fontSize: 11, fontWeight: 700, color: 'inherit' },
+    labelLine: { show: true, length: 6, length2: 6, lineStyle: { color: 'inherit' } },
+    emphasis: { scale: true, scaleSize: 6, label: { fontSize: 13 } },
+  }],
 }))
 
 const trendOpt = computed<EChartsOption>(() => {
@@ -214,6 +250,8 @@ const cols: TableColumn[] = [
 </script>
 
 <style scoped>
+.kpi-grid       { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; }
+@media (max-width: 1100px) { .kpi-grid { grid-template-columns:repeat(2, 1fr); } }
 .grid-side-main { display:grid; grid-template-columns:320px 1fr; gap:16px; }
 .filters     { display:flex; gap:6px; flex-wrap:wrap; }
 .fbtn        { padding:5px 12px; border-radius:7px; font-size:12px; font-weight:700; border:none; background:var(--green-50); color:var(--green-dark); cursor:pointer; transition:all .15s; }

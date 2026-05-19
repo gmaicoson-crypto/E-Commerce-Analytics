@@ -109,9 +109,9 @@ async function loadAll() {
   errorMsg.value = null
   try {
     const [empResp, modsResp, logsResp] = await Promise.all([
-      api.getEmployees(1, 100),
+      api.getEmployees(1, 10000),
       api.getModules(),
-      api.getPermissionLogs(1, 100),
+      api.getPermissionLogs(1, 10000),
     ])
     empList.value = (empResp?.data ?? []) as Employee[]
     modules.value = (modsResp ?? []) as SystemModule[]

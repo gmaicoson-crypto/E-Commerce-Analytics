@@ -19,7 +19,7 @@ class AutoConfig:
     events_per_min: float = 60.0       # 默认 1 事件/秒
     register_weight: float = 0.25      # 25% 注册 / 75% 下单
     order_status_weights: Dict[str, int] = field(default_factory=lambda: {
-        "pending": 10, "paid": 25, "shipped": 25, "completed": 40,
+        "pending": 15, "paid": 15, "shipped": 15, "completed": 45, "cancelled": 10,
     })
 
 

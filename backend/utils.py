@@ -3,6 +3,30 @@ from typing import Tuple, Optional, Any, Dict
 from decimal import Decimal
 
 
+# ─── 客户类型判定规则 ────────────────────────────────────────────────────
+# 业务规则:注册即为新客,注册时间 > 30 天后自动转为老客。
+# 判定基于 Customer.registered_at,与 DB 的 customer_type 字段无关
+# (该字段保留向后兼容,但不再代表真理)。
+NEW_CUSTOMER_DAYS = 1
+
+
+def is_returning_customer(registered_at: Optional[datetime]) -> bool:
+    """注册时间超过 NEW_CUSTOMER_DAYS 天即视为老客。"""
+    if registered_at is None:
+        return False
+    return (datetime.utcnow() - registered_at) > timedelta(days=NEW_CUSTOMER_DAYS)
+
+
+def customer_type_label(registered_at: Optional[datetime]) -> str:
+    """返回 'new' / 'returning' 字符串,用于序列化输出。"""
+    return "returning" if is_returning_customer(registered_at) else "new"
+
+
+def new_customer_threshold() -> datetime:
+    """SQL 比较用:registered_at < threshold 即为老客。"""
+    return datetime.utcnow() - timedelta(days=NEW_CUSTOMER_DAYS)
+
+
 def parse_date_range(date_range: str = "30", start_date: Optional[str] = None, end_date: Optional[str] = None) -> Tuple[date, date]:
     """Parse date_range parameter and return (start_date, end_date)."""
     today = date.today()

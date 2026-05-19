@@ -61,6 +61,7 @@ export const ORDER_STATUS_ZH: Record<string, string> = {
   paid:      '已支付',
   shipped:   '已发货',
   completed: '已完成',
+  cancelled: '已取消',
   refunded:  '已退款',
 }
 /** 由 ZH 反查自动生成,无需重复维护。 */

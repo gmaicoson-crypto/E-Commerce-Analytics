@@ -40,7 +40,7 @@ def _ser_employee(emp: Employee, permissions: list[str] | None = None) -> dict:
 @router.get("/employees", response_model=dict)
 async def list_employees(
     page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100),
+    page_size: int = Query(10, ge=1, le=10000),
     current_user=Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -299,7 +299,7 @@ async def list_modules(
 @router.get("/permission-logs", response_model=dict)
 async def get_permission_logs(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=10000),
     current_user=Depends(require_admin),
     db: Session = Depends(get_db)
 ):

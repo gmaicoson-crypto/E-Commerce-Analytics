@@ -28,14 +28,20 @@ async def orders_overview(
     ).all()
 
     total_orders = len(orders)
-    pending = len([o for o in orders if o.status == "pending"])
-    paid = len([o for o in orders if o.status == "paid"])
-    shipped = len([o for o in orders if o.status == "shipped"])
-    completed = len([o for o in orders if o.status == "completed"])
-    refunded = len([o for o in orders if o.status == "refunded"])
+    # 6 种状态:订单数 + 金额合计 同时返回,前端 KPI 卡片各占一张
+    by_status: dict[str, tuple[int, Decimal]] = {
+        s: (0, Decimal(0)) for s in ("pending", "paid", "shipped", "completed", "cancelled", "refunded")
+    }
+    for o in orders:
+        s = o.status.value if hasattr(o.status, "value") else o.status
+        if s in by_status:
+            cnt, amt = by_status[s]
+            by_status[s] = (cnt + 1, amt + (o.total_amount or Decimal(0)))
 
     total_amount = sum(o.total_amount for o in orders) or Decimal(0)
-    avg_order = total_amount / total_orders if total_orders > 0 else Decimal(0)
+    # 平均订单金额 = 已完成订单总金额 / 已完成订单总数
+    completed_count, completed_amount = by_status["completed"]
+    avg_order = completed_amount / completed_count if completed_count > 0 else Decimal(0)
 
     return success_response({
         "period": {
@@ -43,11 +49,12 @@ async def orders_overview(
             "end": end.isoformat()
         },
         "total_orders": total_orders,
-        "pending_count": pending,
-        "paid_count": paid,
-        "shipped_count": shipped,
-        "completed_count": completed,
-        "refunded_count": refunded,
+        "pending_count":   by_status["pending"][0],   "pending_amount":   float(by_status["pending"][1]),
+        "paid_count":      by_status["paid"][0],      "paid_amount":      float(by_status["paid"][1]),
+        "shipped_count":   by_status["shipped"][0],   "shipped_amount":   float(by_status["shipped"][1]),
+        "completed_count": by_status["completed"][0], "completed_amount": float(by_status["completed"][1]),
+        "cancelled_count": by_status["cancelled"][0], "cancelled_amount": float(by_status["cancelled"][1]),
+        "refunded_count":  by_status["refunded"][0],  "refunded_amount":  float(by_status["refunded"][1]),
         "total_amount": float(total_amount),
         "avg_order_value": float(avg_order)
     })
@@ -225,7 +232,7 @@ async def order_timeline(
 @router.get("/list", response_model=dict)
 async def orders_list(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=10000),
     status_filter: str = Query(None, alias="status"),
     current_user=Depends(check_module_permission("order_analysis")),
     db: Session = Depends(get_db)

@@ -12,7 +12,7 @@ router = APIRouter()
 @router.get("/list", response_model=dict)
 async def get_notifications(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=10000),
     is_read: bool = Query(None),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)

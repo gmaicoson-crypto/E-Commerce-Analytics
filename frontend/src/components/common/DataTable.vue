@@ -23,7 +23,10 @@
     <div v-if="pagination" class="pg">
       <span class="pg-info">共 {{ data.length }} 条</span>
       <button class="pg-btn" :disabled="page <= 1" @click="page--"><AppIcon name="chevronLeft" :size="14" /></button>
-      <button v-for="p in totalPages" :key="p" class="pg-btn" :class="{ active: page === p }" @click="page = p">{{ p }}</button>
+      <template v-for="(p, i) in visiblePages" :key="i">
+        <button v-if="typeof p === 'number'" class="pg-btn" :class="{ active: page === p }" @click="page = p">{{ p }}</button>
+        <span v-else class="pg-dots">…</span>
+      </template>
       <button class="pg-btn" :disabled="page >= totalPages" @click="page++"><AppIcon name="chevronRight" :size="14" /></button>
     </div>
   </div>
@@ -48,6 +51,20 @@ const offset     = computed(() => (page.value - 1) * props.pageSize)
 const paged      = computed(() =>
   props.pagination ? props.data.slice(offset.value, offset.value + props.pageSize) : props.data
 )
+
+// 可见页号 —— 总是显示 5 个页码,过长时中间用 '…' 占位
+//   total ≤ 6        → 全显示
+//   当前页 ≤ 3       → [1,2,3,4,5,…,N]
+//   当前页 ≥ N-2     → [1,…,N-4,N-3,N-2,N-1,N]
+//   其余(中段)      → [1,…,cur-1,cur,cur+1,…,N]
+const visiblePages = computed<(number | '...')[]>(() => {
+  const total = totalPages.value
+  const cur = page.value
+  if (total <= 6) return Array.from({ length: total }, (_, i) => i + 1)
+  if (cur <= 3) return [1, 2, 3, 4, 5, '...', total]
+  if (cur >= total - 2) return [1, '...', total - 4, total - 3, total - 2, total - 1, total]
+  return [1, '...', cur - 1, cur, cur + 1, '...', total]
+})
 </script>
 
 <style scoped>
@@ -61,4 +78,5 @@ const paged      = computed(() =>
 .pg-btn { width: 32px; height: 32px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); color: var(--text1); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; }
 .pg-btn:disabled { background: #f1f5f0; color: var(--text3); cursor: not-allowed; }
 .pg-btn.active   { background: var(--green); border-color: var(--green); color: #fff; font-weight: 700; }
+.pg-dots         { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 32px; color: var(--text3); font-size: 14px; user-select: none; }
 </style>

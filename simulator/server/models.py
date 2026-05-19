@@ -42,6 +42,7 @@ class OrderStatusEnum(str, enum.Enum):
     paid = "paid"
     shipped = "shipped"
     completed = "completed"
+    cancelled = "cancelled"   # pending/paid → cancelled,不计入收入
     refunded = "refunded"
 
 

@@ -65,7 +65,7 @@ function unreadCount(t: string) {
 async function load() {
   loading.value = true
   try {
-    const resp = await api.getNotifications(1, 100)
+    const resp = await api.getNotifications(1, 10000)
     const list: Array<{ id: number; type: string; title: string; content: string; is_read: boolean; created_at: string | null }> = resp?.data ?? []
     notifications.value = list.map(n => ({
       id: n.id,

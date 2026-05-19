@@ -6,7 +6,7 @@ from decimal import Decimal
 from database import get_db
 from dependencies import check_module_permission
 from models import Order, OrderItem, Product, FinanceRecord, Customer
-from utils import success_response, parse_date_range, get_prev_period
+from utils import success_response, parse_date_range, get_prev_period, customer_type_label
 from enum import Enum
 
 router = APIRouter()
@@ -179,7 +179,8 @@ async def sales_by_customer_type(
     for order in orders:
         customer = order.customer
         if customer:
-            ctype = customer.customer_type.value if customer.customer_type else "Unknown"
+            # 改用 registered_at 实时判定:注册 ≤ 30 天为 new,> 30 天为 returning
+            ctype = customer_type_label(customer.registered_at)
             if ctype not in type_sales:
                 type_sales[ctype] = {"sales": Decimal(0), "order_count": 0}
             type_sales[ctype]["sales"] += order.total_amount

@@ -23,7 +23,20 @@ from models import (
 )
 
 
-PROVINCES = ["北京", "上海", "广东", "浙江", "江苏", "福建", "湖北", "湖南", "四川", "山东"]
+PROVINCES = [
+    # 直辖市
+    "北京", "上海", "天津", "重庆",
+    # 省
+    "河北", "山西", "辽宁", "吉林", "黑龙江",
+    "江苏", "浙江", "安徽", "福建", "江西",
+    "山东", "河南", "湖北", "湖南", "广东",
+    "海南", "四川", "贵州", "云南", "陕西",
+    "甘肃", "青海", "台湾",
+    # 自治区
+    "内蒙古", "广西", "西藏", "宁夏", "新疆",
+    # 特别行政区
+    "香港", "澳门",
+]
 
 
 def _enum_or_random(enum_cls, value):
@@ -297,6 +310,9 @@ def _remove_finance_for_order(db: Session, order_id: int) -> int:
 # ─── Customer ──────────────────────────────────────────────────────────
 
 def create_customer(db, *, gender=None, age_group=None, province=None, customer_type=None) -> Dict[str, Any]:
+    """新规则:任何新注册客户初始一律为 'new',backend 查询时按 registered_at 实时判定。
+    customer_type 入参保留向后兼容(simulator UI 仍可指定),但默认 new。
+    """
     last_id = db.query(Customer.id).order_by(Customer.id.desc()).first()
     next_seq = (last_id[0] if last_id else 0) + 1
     c = Customer(
@@ -304,7 +320,8 @@ def create_customer(db, *, gender=None, age_group=None, province=None, customer_
         gender=_enum_or_random(GenderEnum, gender),
         age_group=_enum_or_random(AgeGroupEnum, age_group),
         province=province if province in PROVINCES else random.choice(PROVINCES),
-        customer_type=_enum_or_random(CustomerTypeEnum, customer_type),
+        # 注册即新客;backend 按 registered_at 重新算
+        customer_type=CustomerTypeEnum(customer_type) if customer_type else CustomerTypeEnum.new,
         registered_at=datetime.utcnow(),
     )
     db.add(c)
@@ -432,9 +449,19 @@ def create_order(db, *, status=None, customer_id=None):
 
     now = datetime.utcnow()
     seq = db.query(Order).count() + 1
+    # 订单生命周期建模:
+    #   pending → {paid, cancelled}
+    #   paid    → {shipped → completed, cancelled}
+    # 一次性按真实分布加权抽取最终状态。只有 completed 才计入财务收入。
     order_status = _enum_or_random(OrderStatusEnum, status) if status else random.choices(
-        [OrderStatusEnum.pending, OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed],
-        weights=[10, 25, 25, 40],
+        [
+            OrderStatusEnum.pending,    # 刚下单,未支付
+            OrderStatusEnum.paid,       # 已支付,未发货
+            OrderStatusEnum.shipped,    # 已发货,未签收
+            OrderStatusEnum.completed,  # 已完成 — 唯一收入来源
+            OrderStatusEnum.cancelled,  # 已取消(pending 或 paid 转入)
+        ],
+        weights=[15, 15, 15, 45, 10],
     )[0]
     order = Order(
         order_no=f"ORD{now.strftime('%Y%m%d')}{seq:05d}",
@@ -446,6 +473,8 @@ def create_order(db, *, status=None, customer_id=None):
     db.add(order)
     db.flush()
 
+    # cancelled 订单不扣库存(模拟"取消后归还库存")
+    deduct_stock = order_status != OrderStatusEnum.cancelled
     subtotal_sum = Decimal("0.00")
     touched_products: Dict[int, Product] = {}
     for _ in range(random.randint(1, 3)):
@@ -457,11 +486,16 @@ def create_order(db, *, status=None, customer_id=None):
             quantity=qty, unit_price=product.price, subtotal=sub,
         ))
         subtotal_sum += sub
-        product.stock = max(0, product.stock - qty)
-        touched_products[product.id] = product
+        if deduct_stock:
+            product.stock = max(0, product.stock - qty)
+            touched_products[product.id] = product
 
     order.total_amount = subtotal_sum
+    # paid_at 写入条件:已经经过"支付"环节(paid/shipped/completed),
+    # cancelled 30% 概率是 paid → cancelled(曾经支付过)
     if order.status in (OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed):
+        order.paid_at = now
+    elif order.status == OrderStatusEnum.cancelled and random.random() < 0.3:
         order.paid_at = now
 
     finance = None

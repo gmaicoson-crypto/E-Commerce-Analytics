@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, date
 from decimal import Decimal
 from database import get_db
 from dependencies import check_module_permission
-from models import FinanceRecord, Order
+from models import FinanceRecord, Order, OrderItem, Product
 from utils import success_response, parse_date_range
 
 router = APIRouter()
@@ -28,7 +28,29 @@ async def finance_kpi(
     ).all()
 
     income = sum(r.amount for r in records if r.type.value == "income") or Decimal(0)
-    expense = sum(r.amount for r in records if r.type.value == "expense") or Decimal(0)
+
+    # 新规则:总支出 = 物流成本 + 广告成本 + 已完成订单的商品成本
+    #   - 物流/广告:来自 finance_records 表(_add_completed_finance 写入)
+    #   - 商品成本:SUM(OrderItem.quantity × Product.cost) WHERE Order.status='completed'
+    logistics_ad = sum(
+        r.amount for r in records
+        if r.type.value == "expense" and r.category.value in ("logistics_cost", "ad_cost")
+    ) or Decimal(0)
+
+    product_cost_raw = (
+        db.query(func.coalesce(func.sum(OrderItem.quantity * Product.cost), 0))
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Product, Product.id == OrderItem.product_id)
+        .filter(
+            Order.status == "completed",
+            Order.created_at >= datetime.combine(start, datetime.min.time()),
+            Order.created_at <= datetime.combine(end, datetime.max.time()),
+        )
+        .scalar()
+    ) or 0
+    product_cost = Decimal(str(product_cost_raw))
+
+    expense = logistics_ad + product_cost
     profit = income - expense
 
     profit_margin = (profit / income * 100) if income > 0 else 0
@@ -220,7 +242,7 @@ async def expense_breakdown(
 @router.get("/records", response_model=dict)
 async def finance_records(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=10000),
     type_filter: str = Query(None, alias="type"),
     category_filter: str = Query(None, alias="category"),
     current_user=Depends(check_module_permission("finance_overview")),

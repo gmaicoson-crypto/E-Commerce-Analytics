@@ -4,7 +4,7 @@
     <div class="kpi-row">
       <KpiCard title="总用户数"     :value="overview.total_customers?.toLocaleString() ?? '—'"     icon="users"   icon-bg="#dcfce7" />
       <KpiCard title="新客数"       :value="overview.new_customers?.toLocaleString() ?? '—'"       icon="plus"    icon-bg="#dbeafe" />
-      <KpiCard title="复购客数"     :value="overview.returning_customers?.toLocaleString() ?? '—'" icon="refresh" icon-bg="#ede9fe" />
+      <KpiCard title="复购客数"     :value="overview.repeat_customers?.toLocaleString() ?? '—'"    icon="refresh" icon-bg="#ede9fe" />
     </div>
     <div class="grid-3 mb16">
       <AppCard title="新老客比例">
@@ -155,7 +155,7 @@ function openCustomerTypeDetail() {
     title: '新老客比例 · 客户明细',
     subtitle: '默认展示新客,可按需切换 API',
     load: async () => {
-      const r = await api.getCustomersList(1, 100, { customer_type: 'new' })
+      const r = await api.getCustomersList(1, 10000, { customer_type: 'new' })
       const list = r?.data ?? []
       const chartOption: EChartsOption = {
         tooltip:{trigger:'item', ...TOOLTIP_BASE, formatter:(p:any)=>`${p.name}: ${p.value} (${p.percent}%)`},
@@ -208,7 +208,7 @@ function openGenderDetail() {
     title: '按性别 · 客户明细',
     subtitle: '默认展示男性客户',
     load: async () => {
-      const r = await api.getCustomersList(1, 100, { gender: 'male' })
+      const r = await api.getCustomersList(1, 10000, { gender: 'male' })
       const list = r?.data ?? []
       const chartOption: EChartsOption = {
         tooltip:{trigger:'item', ...TOOLTIP_BASE, formatter:(p:any)=>`${p.name}: ${p.value} (${p.percent}%)`},
@@ -262,21 +262,37 @@ function openProvinceDetail() {
 }
 
 function openAgeDetail() {
+  // 选项来自当前 ageData(后端返回的所有年龄段),保证选择项与图表柱体一致
+  const ageOptions = ageData.value.length > 0
+    ? ageData.value.map(a => ({ label: `${a.age_group} 岁`, value: a.age_group }))
+    : [{ label: '25-34 岁', value: '25-34' }]
+  const defaultAge = ageOptions.find(o => o.value === '25-34')?.value ?? ageOptions[0].value
+
   open({
     title: '按年龄段 · 客户明细',
-    subtitle: '默认展示 25-34 岁段',
-    load: async () => {
-      const r = await api.getCustomersList(1, 100, { age_group: '25-34' })
+    subtitle: '切换年龄段查看对应客户',
+    filters: [
+      { key: 'age_group', label: '年龄段', options: ageOptions, default: defaultAge },
+    ],
+    load: async (selected) => {
+      const ag = selected.age_group || defaultAge
+      const r = await api.getCustomersList(1, 10000, { age_group: ag })
       const list = r?.data ?? []
       const chartOption: EChartsOption = {
         tooltip:{trigger:'axis', ...TOOLTIP_BASE},
         grid: AXIS_GRID,
         xAxis:{type:'category', ...xName('年龄段'), data: ageData.value.map(a=>a.age_group)},
         yAxis:{type:'value', ...yName('用户数 (人)'), splitLine:{lineStyle:{color:'#f0f4f1'}}, axisLabel:{formatter:(v:number)=>`${v}人`}},
-        series:[{type:'bar', data: ageData.value.map((a,i)=>({
-          value: a.count,
-          itemStyle:{ color: `rgba(82,183,136,${1 - i * 0.15})` },
-        })), barMaxWidth:60, itemStyle:{borderRadius:[4,4,0,0]}}],
+        series:[{
+          type:'bar',
+          data: ageData.value.map((a,i)=>({
+            value: a.count,
+            // 当前选中年龄段加深高亮,其他保持原浅绿渐变
+            itemStyle:{ color: a.age_group === ag ? '#2d6a4f' : `rgba(82,183,136,${1 - i * 0.15})` },
+          })),
+          barMaxWidth:60,
+          itemStyle:{borderRadius:[4,4,0,0]},
+        }],
       }
       return { chartOption, columns: CUSTOMER_COLS, rows: list }
     },
@@ -284,18 +300,37 @@ function openAgeDetail() {
 }
 
 const newOldOpt = computed<EChartsOption>(() => ({
-  series: [{ type:'pie', radius:['55%','78%'], data:[
-    { name:'新客', value: newPct.value, itemStyle:{color:'#74c69d'} },
-    { name:'老客', value: 100 - newPct.value, itemStyle:{color:'#2d6a4f'} },
-  ], label:{show:false} }],
+  tooltip: { trigger:'item', formatter: (p:any) => `${p.name}: ${p.value.toFixed(1)}%` },
+  series: [{
+    type:'pie',
+    radius:['55%','78%'],
+    avoidLabelOverlap: true,
+    data: [
+      { name:'新客', value: newPct.value, itemStyle:{color:'#74c69d'} },
+      { name:'老客', value: 100 - newPct.value, itemStyle:{color:'#2d6a4f'} },
+    ],
+    // 130px 小饼图 → label 内置在扇区上,单行展示"标签 百分比",颜色白底加粗
+    label: { show: true, position: 'inside', formatter: '{b} {d}%', fontSize: 11, fontWeight: 400, color: '#000' },
+    labelLine: { show: false },
+    emphasis: { scale: true, scaleSize: 4, label: { fontSize: 13 } },
+  }],
 }))
 
 const genderOpt = computed<EChartsOption>(() => ({
-  series: [{ type:'pie', radius:['55%','78%'], data: genderData.value.map(g => ({
-    name: g.gender === 'male' ? '男性' : '女性',
-    value: g.count,
-    itemStyle: { color: g.gender === 'male' ? '#52b788' : '#b7e4c7' },
-  })), label:{show:false} }],
+  tooltip: { trigger:'item', formatter: (p:any) => `${p.name}: ${(p.value as number).toLocaleString()} (${p.percent}%)` },
+  series: [{
+    type:'pie',
+    radius:['55%','78%'],
+    avoidLabelOverlap: true,
+    data: genderData.value.map(g => ({
+      name: g.gender === 'male' ? '男性' : '女性',
+      value: g.count,
+      itemStyle: { color: g.gender === 'male' ? '#52b788' : '#b7e4c7' },
+    })),
+    label: { show: true, position: 'inside', formatter: '{b} {d}%', fontSize: 11, fontWeight: 400, color: '#000' },
+    labelLine: { show: false },
+    emphasis: { scale: true, scaleSize: 4, label: { fontSize: 13 } },
+  }],
 }))
 
 const regOpt = computed<EChartsOption>(() => {
@@ -333,7 +368,11 @@ const provinceOpt = computed<EChartsOption>(() => {
     tooltip: {
       trigger: 'item',
       ...TOOLTIP_BASE,
-      formatter: (p: any) => p.data ? `${p.name}: ${p.data.value} 人` : `${p.name}: 0 人`,
+      formatter: (p: any) => {
+        const v = p.data?.value
+        const n = typeof v === 'number' && Number.isFinite(v) ? v : 0
+        return `${p.name}: ${n.toLocaleString()} 人`
+      },
     },
     visualMap: {
       right: 12,
