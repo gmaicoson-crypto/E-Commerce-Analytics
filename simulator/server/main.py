@@ -161,13 +161,17 @@ def api_counts(db: Session = Depends(get_db)):
 class AutoStartBody(BaseModel):
     events_per_min:        Optional[float] = None
     register_weight:       Optional[float] = None
-    # 推进循环(新)
+    # 推进循环
     advances_per_min:      Optional[float] = None
     pending_to_paid:       Optional[float] = None
     pending_to_cancel:     Optional[float] = None
     paid_to_shipped:       Optional[float] = None
     paid_to_refunded:      Optional[float] = None
     shipped_to_completed:  Optional[float] = None
+    # 回填模式
+    backfill_enabled:      Optional[bool] = None
+    backfill_start_date:   Optional[str]  = None
+    backfill_end_date:     Optional[str]  = None
 
 
 @app.post("/api/automation/start")

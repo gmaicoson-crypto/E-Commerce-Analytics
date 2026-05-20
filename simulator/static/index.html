@@ -83,6 +83,16 @@
         </div>
       </div>
 
+      <div class="auto-backfill">
+        <label class="bf-toggle">
+          <input id="bf-enabled" type="checkbox" />
+          <span>回填模式</span>
+        </label>
+        <label>开始日期<input id="bf-start" type="date" /></label>
+        <label>结束日期<input id="bf-end" type="date" /></label>
+        <span class="bf-hint">开启后,每条新数据的时间戳随机落在区间内,用于补造历史趋势图数据</span>
+      </div>
+
       <div class="auto-section-title">
         状态机转移概率
         <span class="auto-section-sub">每次推进 tick 选中订单后的出口概率,余下为本次保持不变</span>

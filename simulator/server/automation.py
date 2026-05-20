@@ -10,7 +10,7 @@
 import asyncio
 import random
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
 from typing import Optional, Dict
 
 from sqlalchemy import func as sa_func
@@ -39,6 +39,14 @@ class AutoConfig:
     paid_to_shipped:      float = 0.6
     paid_to_refunded:     float = 0.05
     shipped_to_completed: float = 0.8
+
+    # ─── 回填模式(新)─────────────────────────────────────────────────
+    # 开启后,每次 tick 写入的所有时间戳(订单 created_at / 财务 recorded_at /
+    # 推进 paid_at completed_at 等)随机落在 [start, end] 区间内,用于补造
+    # 30 天趋势图所需的历史数据。关闭则按 datetime.utcnow() 实时写入。
+    backfill_enabled:    bool = False
+    backfill_start_date: Optional[str] = None  # ISO date 'YYYY-MM-DD'
+    backfill_end_date:   Optional[str] = None  # 同上
 
 
 @dataclass
@@ -123,12 +131,47 @@ class AutomationEngine:
 
     # ─── 同步 tick(运行在 worker 线程) ─────────────────────────────────
 
+    def _random_backfill_dt(self) -> Optional[datetime]:
+        """回填模式开启时返回区间内随机 datetime,否则返回 None。
+
+        关键:返回的随机时间会被 data_factory.set_clock_override 写入线程局部,
+        本 tick 内所有 datetime.utcnow → _now() 调用都用它,实现"历史日期补造数据"。
+        """
+        cfg = self.config
+        if not cfg.backfill_enabled or not cfg.backfill_start_date or not cfg.backfill_end_date:
+            return None
+        try:
+            s = date.fromisoformat(cfg.backfill_start_date)
+            e = date.fromisoformat(cfg.backfill_end_date)
+        except (TypeError, ValueError):
+            return None
+        if e < s:
+            s, e = e, s
+        span_days = (e - s).days
+        d = s + timedelta(days=random.randint(0, span_days))
+        # 当天随机时刻,避免所有事件凝在 00:00:00
+        return datetime.combine(d, time(
+            hour=random.randint(0, 23),
+            minute=random.randint(0, 59),
+            second=random.randint(0, 59),
+        ))
+
+    def _with_clock(self, fn) -> None:
+        """tick 前后管理 data_factory 的时钟覆盖,确保异常路径也清理。"""
+        df.set_clock_override(self._random_backfill_dt())
+        try:
+            fn()
+        finally:
+            df.set_clock_override(None)
+
     def _tick(self) -> None:
-        with SessionLocal() as db:
-            if random.random() < self.config.register_weight:
-                self._tick_register(db)
-            else:
-                self._tick_order(db)
+        def _do():
+            with SessionLocal() as db:
+                if random.random() < self.config.register_weight:
+                    self._tick_register(db)
+                else:
+                    self._tick_order(db)
+        self._with_clock(_do)
 
     def _tick_register(self, db) -> None:
         try:
@@ -166,6 +209,9 @@ class AutomationEngine:
     # ─── 推进 tick ──────────────────────────────────────────────────────
 
     def _advance_tick(self) -> None:
+        self._with_clock(lambda: self._do_advance())
+
+    def _do_advance(self) -> None:
         with SessionLocal() as db:
             # ORDER BY RAND() LIMIT 1 — 比 .all() + random.choice 高效
             order = (

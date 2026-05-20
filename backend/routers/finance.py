@@ -37,6 +37,7 @@ async def finance_kpi(
             func.coalesce(func.sum(case((FinanceRecord.category == "product_cost",   FinanceRecord.amount), else_=0)), 0).label("product_cost"),
             func.coalesce(func.sum(case((FinanceRecord.category == "logistics_cost", FinanceRecord.amount), else_=0)), 0).label("logistics_cost"),
             func.coalesce(func.sum(case((FinanceRecord.category == "ad_cost",        FinanceRecord.amount), else_=0)), 0).label("ad_cost"),
+            func.coalesce(func.sum(case((FinanceRecord.category == "refund_out",     FinanceRecord.amount), else_=0)), 0).label("refund_out"),
             func.count(func.distinct(case((FinanceRecord.category == "sales_income", FinanceRecord.related_order_id), else_=None))).label("orders"),
         )
         .filter(FinanceRecord.recorded_at >= s_dt, FinanceRecord.recorded_at <= e_dt)
@@ -46,9 +47,10 @@ async def finance_kpi(
     product_cost   = Decimal(str(row.product_cost))
     logistics_cost = Decimal(str(row.logistics_cost))
     ad_cost        = Decimal(str(row.ad_cost))
+    refund_out     = Decimal(str(row.refund_out))
     orders         = int(row.orders or 0)
 
-    expense = product_cost + logistics_cost + ad_cost
+    expense = product_cost + logistics_cost + ad_cost + refund_out
     profit = income - expense
     profit_margin = (profit / income * 100) if income > 0 else 0
 

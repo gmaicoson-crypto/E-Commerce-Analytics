@@ -295,6 +295,74 @@ async def top_products_trend(
     })
 
 
+@router.get("/category-daily-top", response_model=dict)
+async def category_daily_top(
+    date_str: str = Query(None, alias="date"),  # 'YYYY-MM-DD',缺省 = 今天
+    category: str = Query(None),                # 中文品类名:服装/电子/食品/家居/美妆
+    limit: int = Query(5, ge=1, le=20),
+    current_user=Depends(check_module_permission("product_analysis")),
+    db: Session = Depends(get_db),
+):
+    """指定日期 + 指定品类的当日 TOP-N 商品销量(按销售额排序)。"""
+    # 日期解析
+    if date_str:
+        try:
+            target = date.fromisoformat(date_str)
+        except ValueError:
+            target = date.today()
+    else:
+        target = date.today()
+    s_dt = datetime.combine(target, datetime.min.time())
+    e_dt = datetime.combine(target, datetime.max.time())
+
+    paid_statuses = ["paid", "shipped", "completed"]
+
+    q = (
+        db.query(
+            OrderItem.product_id.label("pid"),
+            func.coalesce(func.sum(OrderItem.subtotal), 0).label("sales"),
+            func.coalesce(func.sum(OrderItem.quantity), 0).label("qty"),
+        )
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Product, Product.id == OrderItem.product_id)
+        .filter(
+            Order.created_at >= s_dt,
+            Order.created_at <= e_dt,
+            Order.status.in_(paid_statuses),
+        )
+    )
+    if category:
+        q = q.filter(Product.category == category)
+
+    rows = (
+        q.group_by(OrderItem.product_id)
+        .order_by(func.sum(OrderItem.subtotal).desc())
+        .limit(limit)
+        .all()
+    )
+
+    products = {
+        p.id: p for p in db.query(Product).filter(Product.id.in_([r.pid for r in rows])).all()
+    } if rows else {}
+
+    data = []
+    for r in rows:
+        p = products.get(r.pid)
+        data.append({
+            "product_id": r.pid,
+            "product_name": p.product_name if p else f"Product {r.pid}",
+            "category": (p.category.value if p and p.category else None),
+            "quantity": int(r.qty or 0),
+            "sales": float(r.sales or 0),
+        })
+
+    return success_response({
+        "date": target.isoformat(),
+        "category": category,
+        "data": data,
+    })
+
+
 @router.get("/profit-analysis", response_model=dict)
 async def profit_analysis(
     date_range: str = Query("last_30_days"),

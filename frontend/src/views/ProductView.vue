@@ -21,15 +21,23 @@
           <LegendItem v-for="(c,i) in catData" :key="c.name" :color="PAL[i]" :label="c.name" :pct="c.pct" />
         </div>
       </AppCard>
-      <AppCard title="TOP5商品销量趋势" subtitle="近30天各商品日销量(含今日)" class="equal-card">
+      <AppCard title="品类每日 TOP5 商品" :subtitle="`${dailyTopDate} · ${dailyTopCategory}`" class="equal-card">
         <template #extra>
-          <button class="ico-btn" title="展开详情" @click="openTop5TrendDetail">
-            <AppIcon name="maximize" :size="14" color="var(--text2)" />
-          </button>
+          <div class="cat-daily-filters">
+            <ThemedSelect v-model="dailyTopDate" :options="dateOpts" :min-width="120" @change="loadDailyTop" />
+            <ThemedSelect v-model="dailyTopCategory" :options="categoryOpts" :min-width="84" @change="loadDailyTop" />
+          </div>
         </template>
-        <EChartBox :option="trendOpt" :height="320" />
+        <EChartBox :option="dailyTopOpt" :height="320" />
       </AppCard>
     </div>
+
+    <AppCard title="TOP5 商品销量趋势" :subtitle="selectedProductTrend ? `${selectedProductTrend.product_name} · 近30天日销量` : '近30天日销量'" class="mb16">
+      <template #extra>
+        <ThemedSelect v-model="selectedTrendPid" :options="trendProductOpts" :min-width="180" />
+      </template>
+      <EChartBox :option="trendOpt" :height="340" />
+    </AppCard>
 
     <div class="grid-equal-2 mb16">
       <AppCard title="商品销量 TOP10" subtitle="近30天销售额排行" class="equal-card">
@@ -72,6 +80,7 @@ import { api } from '@/services/api'
 import { useDebouncedReload } from '@/composables/useEventStream'
 import { useChartDetail } from '@/composables/useChartDetail'
 import AppIcon from '@/components/common/AppIcon.vue'
+import ThemedSelect from '@/components/common/ThemedSelect.vue'
 
 const performance  = ref<ProductPerformance[]>([])
 const lowStock     = ref<LowStockProduct[]>([])
@@ -88,6 +97,45 @@ const overviewKpi  = ref({
 interface TopTrendProduct { product_id: number; product_name: string; category: string | null; total_qty: number; daily: number[] }
 interface TopTrendResp { period_days: number; dates: string[]; products: TopTrendProduct[] }
 const topTrend = ref<TopTrendResp>({ period_days: 30, dates: [], products: [] })
+
+// 趋势卡:TOP5 商品里单选 1 个展示
+const selectedTrendPid = ref<string>('')
+const trendProductOpts = computed(() => topTrend.value.products.map((p, i) => ({
+  label: `TOP${i + 1} · ${p.product_name}`,
+  value: String(p.product_id),
+})))
+const selectedProductTrend = computed(() => {
+  const pid = Number(selectedTrendPid.value)
+  return topTrend.value.products.find(p => p.product_id === pid) ?? topTrend.value.products[0] ?? null
+})
+
+// 「品类每日 TOP5」筛选 + 数据
+const CATEGORIES = ['服装', '电子', '食品', '家居', '美妆'] as const
+const categoryOpts = CATEGORIES.map(c => ({ label: c, value: c }))
+const todayISO = new Date().toISOString().slice(0, 10)
+const dailyTopDate = ref(todayISO)
+const dailyTopCategory = ref<string>(CATEGORIES[0])
+const dailyTopData = ref<{ product_name: string; quantity: number; sales: number }[]>([])
+// 近 30 天日期选项,MM-DD 显示
+const dateOpts = computed(() => {
+  const out: { label: string; value: string }[] = []
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(Date.now() - i * 86400 * 1000)
+    const iso = d.toISOString().slice(0, 10)
+    out.push({ label: i === 0 ? `今天 (${iso.slice(5)})` : iso.slice(5), value: iso })
+  }
+  return out
+})
+
+async function loadDailyTop() {
+  try {
+    const r = await api.getCategoryDailyTop(dailyTopDate.value, dailyTopCategory.value, 5)
+    dailyTopData.value = (r?.data ?? []) as { product_name: string; quantity: number; sales: number }[]
+  } catch (e) {
+    console.error('[ProductView] loadDailyTop failed', e)
+    dailyTopData.value = []
+  }
+}
 
 const top10 = computed(() =>
   performance.value.slice(0, 10).map((p, i) => ({
@@ -141,13 +189,18 @@ async function loadData() {
     categoryRaw.value = (byCat ?? []) as { category: string; count: number }[]
     if (ovw) overviewKpi.value = ovw
     topTrend.value = (trend as TopTrendResp) ?? { period_days: 30, dates: [], products: [] }
+    // 默认选中 TOP1;若用户已选项目仍在新数据里则保留
+    const first = topTrend.value.products[0]
+    if (first && !topTrend.value.products.some(p => String(p.product_id) === selectedTrendPid.value)) {
+      selectedTrendPid.value = String(first.product_id)
+    }
   } catch (e) {
     console.error('[ProductView] load failed', e)
   }
 }
 
-onMounted(loadData)
-useDebouncedReload(['product', 'order'], loadData)
+onMounted(() => { loadData(); loadDailyTop() })
+useDebouncedReload(['product', 'order'], () => { loadData(); loadDailyTop() })
 
 const { open } = useChartDetail()
 
@@ -173,54 +226,6 @@ function openCategoryDetail() {
         { key:'pct', title:'占比', align:'right', render:(_,row)=>`${(((row as any).count/totalCount)*100).toFixed(1)}%` },
       ]
       return { chartOption, columns: cols, rows: data as unknown as Record<string,unknown>[] }
-    },
-  })
-}
-
-/** TOP5 商品销量趋势 — 真实日级聚合 */
-function openTop5TrendDetail() {
-  open({
-    title: 'TOP5 商品销量趋势 · 近 30 天',
-    subtitle: '按已支付订单聚合的日级真实销量(含今日)',
-    load: async () => {
-      const [trendResp, perfResp] = await Promise.all([
-        api.getTopProductsTrend(30, 5),
-        api.getProductsPerformance('30', 5),
-      ])
-      const trend = (trendResp as TopTrendResp) ?? { period_days: 30, dates: [], products: [] }
-      const perf = (perfResp?.data ?? []) as ProductPerformance[]
-      const labels = trend.dates.map(d => d.slice(5))
-      const chartOption: EChartsOption = {
-        tooltip: { trigger:'axis', ...TOOLTIP_BASE },
-        legend: {
-          top: 0,
-          data: trend.products.map(p => p.product_name.slice(0, 16)),
-          itemWidth: 10, itemHeight: 10, icon: 'circle',
-        },
-        grid: { ...AXIS_GRID, top: 60 },
-        xAxis: { type:'category', ...xName('日期'), data: labels, axisLabel:{ interval: Math.max(1, Math.floor(labels.length/12)) } },
-        yAxis: { type:'value', ...yName('日销量 (件)'), minInterval:1, splitLine:{ lineStyle:{ color:'#f0f4f1' } }, axisLabel:{ formatter:(v:number)=>`${v}件` } },
-        series: trend.products.map((p, i) => ({
-          type: 'line',
-          name: p.product_name.slice(0, 16),
-          smooth: true,
-          data: p.daily,
-          lineStyle: { color: VIVID5[i % VIVID5.length], width: 2.5 },
-          areaStyle: { color: `${VIVID5[i % VIVID5.length]}15` },
-          symbol: 'none',
-        })),
-      }
-      const cols: TableColumn[] = [
-        { key:'rank',          title:'排名', align:'right' },
-        { key:'product_name',  title:'商品名', wrap:true },
-        { key:'category',      title:'品类' },
-        { key:'price',         title:'售价',   align:'right', render:v=>`¥${(v as number).toFixed(2)}` },
-        { key:'quantity_sold', title:'销量',   align:'right', render:v=>(v as number).toLocaleString() },
-        { key:'sales',         title:'销售额', align:'right', render:v=>`¥${(v as number).toLocaleString(undefined,{maximumFractionDigits:0})}` },
-        { key:'profit_margin', title:'毛利率', align:'right', render:v=>`${(v as number).toFixed(1)}%` },
-      ]
-      const tableRows = perf.map((r, i) => ({ rank: i + 1, ...r }))
-      return { chartOption, columns: cols, rows: tableRows as unknown as Record<string,unknown>[] }
     },
   })
 }
@@ -290,25 +295,54 @@ const listCols: TableColumn[] = [
 
 const VIVID5 = ['#6366f1','#f59e0b','#ec4899','#06b6d4','#f97316']
 const trendOpt = computed<EChartsOption>(() => {
-  const products = topTrend.value.products
+  const p = selectedProductTrend.value
   const labels = topTrend.value.dates.map(d => d.slice(5))  // MM-DD
+  const idx = p ? topTrend.value.products.findIndex(x => x.product_id === p.product_id) : 0
+  const color = VIVID5[(idx >= 0 ? idx : 0) % VIVID5.length]
   return {
-    tooltip: { trigger:'axis', ...TOOLTIP_BASE },
-    legend: { top:0, data: products.map(p=>p.product_name.slice(0,12)), itemWidth:8, itemHeight:8, icon:'circle', textStyle:{fontSize:11} },
-    grid: { ...AXIS_GRID, top: 60 },
-    xAxis: { type:'category', ...xName('日期'), data:labels, axisLine:{show:false}, axisTick:{show:false}, splitLine:{show:false}, axisLabel:{interval:Math.max(1, Math.floor(labels.length/8))} },
+    tooltip: { trigger:'axis', ...TOOLTIP_BASE, formatter:(params:unknown)=>{
+      const arr = params as { name:string; value:number }[]
+      const v = arr[0]?.value ?? 0
+      return `${arr[0]?.name ?? ''}<br>${p?.product_name ?? ''}: ${v} 件`
+    } },
+    grid: AXIS_GRID,
+    xAxis: { type:'category', ...xName('日期'), data:labels, axisLine:{show:false}, axisTick:{show:false}, splitLine:{show:false}, axisLabel:{interval:Math.max(1, Math.floor(labels.length/10))} },
     yAxis: { type:'value', ...yName('日销量 (件)'), minInterval:1, splitLine:{lineStyle:{color:'#f0f4f1'}}, axisLabel:{formatter:(v:number)=>`${v}件`} },
-    series: products.map((p, i) => ({
+    series: [{
       type:'line',
-      name: p.product_name.slice(0, 12),
       smooth:true,
-      data: p.daily,
-      lineStyle:{color:VIVID5[i % VIVID5.length],width:2},
-      areaStyle:{color:`${VIVID5[i % VIVID5.length]}15`},
-      symbol:'none',
-    })),
+      data: p?.daily ?? [],
+      lineStyle:{ color, width:2.5 },
+      areaStyle:{ color:`${color}20` },
+      symbol:'circle',
+      symbolSize:4,
+      itemStyle:{ color },
+    }],
   }
 })
+const dailyTopOpt = computed<EChartsOption>(() => {
+  const rows = [...dailyTopData.value].reverse()  // 倒序让 TOP1 在最上面
+  return {
+    tooltip: { trigger:'axis', axisPointer:{ type:'shadow' }, ...TOOLTIP_BASE,
+      formatter:(p:any) => {
+        const item = (p as { name:string; value:number; data:{ name:string; quantity:number; sales:number } }[])[0]
+        const d = item.data
+        return `${d.name}<br>销量: ${d.quantity} 件<br>销售额: ${fmtMoneyCN(d.sales)}`
+      },
+    },
+    grid: { ...AXIS_GRID, left: 90, right: 60 },
+    xAxis: { type:'value', ...xName('销售额 (¥)'), splitLine:{ lineStyle:{ color:'#f0f4f1' } }, axisLabel:{ formatter:(v:number)=>fmtMoneyCN(v, { wanDecimals: 0 }) } },
+    yAxis: { type:'category', ...yName('商品'), data: rows.map(r => r.product_name.slice(0, 16)), axisLine:{ show:false }, axisTick:{ show:false } },
+    series: [{
+      type: 'bar',
+      data: rows.map(r => ({ name: r.product_name, value: r.sales, quantity: r.quantity, sales: r.sales })),
+      itemStyle: { color: 'rgba(82,183,136,.85)', borderRadius: [0, 4, 4, 0] },
+      barMaxWidth: 22,
+      label: { show: true, position: 'right', formatter: (p:any) => `${p.data.quantity}件 · ${fmtMoneyCN(p.data.sales, { wanDecimals: 0 })}`, fontSize: 11, color: 'var(--text2)' },
+    }],
+  }
+})
+
 const catOpt = computed<EChartsOption>(() => ({
   tooltip: { trigger:'item', ...TOOLTIP_BASE, formatter:(p:any)=>`${p.name}: ${p.value}%` },
   series: [{
@@ -330,4 +364,5 @@ const catOpt = computed<EChartsOption>(() => ({
 .equal-card :deep(.card-body) { flex:1; display:flex; flex-direction:column; min-height:0; }
 .legend-list                  { margin-top:14px; display:grid; grid-template-columns:repeat(2, 1fr); gap:6px 18px; }
 .scroll-body                  { flex:1; max-height:440px; overflow-y:auto; }
+.cat-daily-filters            { display:flex; gap:8px; align-items:center; }
 </style>

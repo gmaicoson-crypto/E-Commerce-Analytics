@@ -581,7 +581,15 @@ const AUTO = {
       paid_to_shipped:      pct('tr-ps', 60),
       paid_to_refunded:     pct('tr-pr', 5),
       shipped_to_completed: pct('tr-sc', 80),
+      backfill_enabled:     $('#bf-enabled').checked,
+      backfill_start_date:  $('#bf-start').value || null,
+      backfill_end_date:    $('#bf-end').value   || null,
     }
+  },
+  syncBackfillState() {
+    const on = $('#bf-enabled').checked
+    $('#bf-start').disabled = !on
+    $('#bf-end').disabled   = !on
   },
   async start() {
     const body = AUTO.readConfig()
@@ -650,11 +658,23 @@ const AUTO = {
       setPct('tr-ps',         c.paid_to_shipped)
       setPct('tr-pr',         c.paid_to_refunded)
       setPct('tr-sc',         c.shipped_to_completed)
+      if (typeof c.backfill_enabled === 'boolean') $('#bf-enabled').checked = c.backfill_enabled
+      if (c.backfill_start_date) $('#bf-start').value = c.backfill_start_date
+      if (c.backfill_end_date)   $('#bf-end').value   = c.backfill_end_date
+      AUTO.syncBackfillState()
     }
   },
   bind() {
     $('#auto-start').addEventListener('click', AUTO.start)
     $('#auto-stop').addEventListener('click', AUTO.stop)
+    $('#bf-enabled').addEventListener('change', AUTO.syncBackfillState)
+    // 默认填:30 天前 → 今天
+    const today = new Date()
+    const past = new Date(today.getTime() - 29 * 86400 * 1000)
+    const iso = (d) => d.toISOString().slice(0, 10)
+    if (!$('#bf-start').value) $('#bf-start').value = iso(past)
+    if (!$('#bf-end').value)   $('#bf-end').value   = iso(today)
+    AUTO.syncBackfillState()
     if (!AUTO.poller) AUTO.poller = setInterval(AUTO.refresh, 2000)
   },
 }

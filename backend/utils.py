@@ -7,7 +7,7 @@ from decimal import Decimal
 # 业务规则:注册即为新客,注册时间 > 30 天后自动转为老客。
 # 判定基于 Customer.registered_at,与 DB 的 customer_type 字段无关
 # (该字段保留向后兼容,但不再代表真理)。
-NEW_CUSTOMER_DAYS = 1
+NEW_CUSTOMER_DAYS = 15
 
 
 def is_returning_customer(registered_at: Optional[datetime]) -> bool:

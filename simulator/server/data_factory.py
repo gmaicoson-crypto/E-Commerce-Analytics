@@ -10,10 +10,26 @@
 - "in_use"     — 删商品但商品出现在 order_items
 """
 import random
+import threading
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Dict, Any, List, Union
 from sqlalchemy.orm import Session
+
+
+# ─── 时钟覆盖(回填模式)─────────────────────────────────────────────────
+# 自动化引擎可以在 tick 前往 _clock.override 写入一个 datetime,该 worker 线程
+# 内所有走 _now() 的写入(订单、客户、财务流水、推进时间戳等)都会用这个时间,
+# 实现"把生成数据回填到指定历史日期"。tick 结束后清空,不污染其他请求。
+_clock = threading.local()
+
+
+def _now() -> datetime:
+    return getattr(_clock, "override", None) or _now()
+
+
+def set_clock_override(ts: Optional[datetime]) -> None:
+    _clock.override = ts
 from models import (
     Customer, Product, Order, OrderItem, FinanceRecord, Notification, Refund,
     CategoryEnum, GenderEnum, AgeGroupEnum, CustomerTypeEnum,
@@ -234,7 +250,7 @@ def _push_stock_alert(db: Session, product: Product) -> Optional[Dict[str, Any]]
             title="库存预警",
             content=f"商品《{product.product_name}》库存仅剩 {product.stock} 件,低于阈值 {product.low_stock_threshold} 件",
             is_read=False,
-            created_at=datetime.utcnow(),
+            created_at=_now(),
         )
         db.add(n)
         db.flush()
@@ -309,7 +325,7 @@ def _add_sale_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
     幂等:若 order 已经有这些 category 的记录,会先跳过(由调用方保证只在
     pending→paid 边界调用一次,这里不做额外校验)。
     """
-    now = datetime.utcnow()
+    now = _now()
     subtotal = order.total_amount or Decimal("0")
     product_cost = _order_product_cost(db, order.id)
     records = [
@@ -334,11 +350,28 @@ def _add_sale_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
 
 def _add_logistics_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
     """订单进入 shipped 时,补 1 条 logistics_cost。"""
-    now = datetime.utcnow()
+    now = _now()
     subtotal = order.total_amount or Decimal("0")
     record = FinanceRecord(
         type=FinanceTypeEnum.expense, category=FinanceCategoryEnum.logistics_cost,
         amount=(subtotal * Decimal("0.08")).quantize(Decimal("0.01")),
+        related_order_id=order.id, recorded_at=now,
+    )
+    db.add(record)
+    db.flush()
+    return [_ser_finance(record)]
+
+
+def _add_refund_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
+    """订单从 paid 转 refunded 时,补 1 条 refund_out 支出。
+
+    注意:不删除该订单已有的 sales_income / product_cost / ad_cost,
+    收入和成本仍记账,退款作为单独的支出条目体现资金流出。
+    """
+    now = _now()
+    record = FinanceRecord(
+        type=FinanceTypeEnum.expense, category=FinanceCategoryEnum.refund_out,
+        amount=order.total_amount or Decimal("0"),
         related_order_id=order.id, recorded_at=now,
     )
     db.add(record)
@@ -366,7 +399,7 @@ def create_customer(db, *, gender=None, age_group=None, province=None, customer_
         province=province if province in PROVINCES else random.choice(PROVINCES),
         # 注册即新客;backend 按 registered_at 重新算
         customer_type=CustomerTypeEnum(customer_type) if customer_type else CustomerTypeEnum.new,
-        registered_at=datetime.utcnow(),
+        registered_at=_now(),
     )
     db.add(c)
     db.commit()
@@ -524,7 +557,7 @@ def create_order(db, *, status=None, customer_id=None):
     if not products:
         return None
 
-    now = datetime.utcnow()
+    now = _now()
     seq = db.query(Order).count() + 1
     # 订单生命周期建模:
     #   pending → {paid, cancelled}
@@ -601,7 +634,7 @@ def update_order(db, id, *, status=None):
     finance 同步规则(新):
       - pending → paid     : 写入 sales_income + product_cost + ad_cost
       - paid    → shipped  : 写入 logistics_cost
-      - paid    → refunded : 删除该订单所有 finance(销售已撤销)
+      - paid    → refunded : 写入 refund_out 支出(保留原 sales_income 等,资金已收过)
       - shipped → completed: 无新增(已就位)
 
     返回:
@@ -622,7 +655,7 @@ def update_order(db, id, *, status=None):
             return "invalid_transition"
 
     old_status = o.status
-    now = datetime.utcnow()
+    now = _now()
 
     o.status = new_status
     if new_status in (OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed) and not o.paid_at:
@@ -641,7 +674,7 @@ def update_order(db, id, *, status=None):
     elif old_status == OrderStatusEnum.paid and new_status == OrderStatusEnum.shipped:
         finance_added.extend(_add_logistics_finance(db, o))
     elif old_status == OrderStatusEnum.paid and new_status == OrderStatusEnum.refunded:
-        finance_removed = _remove_finance_for_order(db, o.id)
+        finance_added.extend(_add_refund_finance(db, o))
 
     db.commit()
     db.refresh(o)
@@ -707,7 +740,7 @@ def create_refund(db, *, order_id=None, amount=None):
         Decimal(str(amount)) if amount
         else (order.total_amount * Decimal(random.uniform(0.3, 1.0))).quantize(Decimal("0.01"))
     )
-    now = datetime.utcnow()
+    now = _now()
     r = Refund(
         order_id=order.id,
         refund_amount=amt,
@@ -744,7 +777,7 @@ def update_refund(db, id, **fields):
     if fields.get("reason"):        r.reason = RefundReasonEnum(fields["reason"])
     if fields.get("refund_amount") is not None: r.refund_amount = Decimal(str(fields["refund_amount"]))
     if r.status == RefundStatusEnum.completed and not r.completed_at:
-        r.completed_at = datetime.utcnow()
+        r.completed_at = _now()
     db.commit()
     db.refresh(r)
     return _ser_refund(r)
@@ -783,7 +816,7 @@ def create_finance_record(db, *, type_=None, category=None, amount=None) -> Dict
     amt = Decimal(str(amount)) if amount else Decimal(random.uniform(100, 10000))
     amt = amt.quantize(Decimal("0.01"))
     fr = FinanceRecord(
-        type=t, category=c, amount=amt, related_order_id=None, recorded_at=datetime.utcnow(),
+        type=t, category=c, amount=amt, related_order_id=None, recorded_at=_now(),
     )
     db.add(fr)
     db.commit()
@@ -837,7 +870,7 @@ def create_notification(db, *, ntype=None, title=None, content=None) -> Dict[str
         title=title or _NOTIF_TITLES[ntype],
         content=content or _NOTIF_DEFAULT_CONTENT[ntype],
         is_read=False,
-        created_at=datetime.utcnow(),
+        created_at=_now(),
     )
     db.add(n)
     db.commit()

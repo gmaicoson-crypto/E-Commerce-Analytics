@@ -75,6 +75,7 @@ class ApiClient {
   getLowStockProducts()                             { return this.request<any>('GET', '/products/low-stock') }
   getProductsPerformance(dateRange = '30', limit = 20) { return this.request<any>('GET', `/products/performance${qs({ date_range: dateRange, limit })}`) }
   getTopProductsTrend(days = 30, limit = 5)         { return this.request<any>('GET', `/products/top-trend${qs({ days, limit })}`) }
+  getCategoryDailyTop(date: string, category: string, limit = 5) { return this.request<any>('GET', `/products/category-daily-top${qs({ date, category, limit })}`) }
   getProductHighlights(days = 7, limit = 8)         { return this.request<any>('GET', `/products/highlights${qs({ days, limit })}`) }
   getProfitAnalysis(dateRange = '30')               { return this.request<any>('GET', `/products/profit-analysis${qs({ date_range: dateRange })}`) }
 
