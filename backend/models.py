@@ -63,6 +63,7 @@ class FinanceTypeEnum(str, enum.Enum):
 
 class FinanceCategoryEnum(str, enum.Enum):
     sales_income = "sales_income"
+    product_cost = "product_cost"
     logistics_cost = "logistics_cost"
     ad_cost = "ad_cost"
     refund_out = "refund_out"

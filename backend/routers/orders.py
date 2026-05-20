@@ -39,9 +39,12 @@ async def orders_overview(
             by_status[s] = (cnt + 1, amt + (o.total_amount or Decimal(0)))
 
     total_amount = sum(o.total_amount for o in orders) or Decimal(0)
-    # 平均订单金额 = 已完成订单总金额 / 已完成订单总数
-    completed_count, completed_amount = by_status["completed"]
-    avg_order = completed_amount / completed_count if completed_count > 0 else Decimal(0)
+    # 平均订单金额 = 4 个有效状态(pending+paid+shipped+completed)金额合计 / 4 状态订单数
+    # 不含 cancelled / refunded(取消和退款的订单不算入有效消费)
+    valid_statuses = ("pending", "paid", "shipped", "completed")
+    valid_orders = [o for o in orders if (o.status.value if hasattr(o.status, "value") else o.status) in valid_statuses]
+    valid_amount = sum(o.total_amount for o in valid_orders) or Decimal(0)
+    avg_order = valid_amount / len(valid_orders) if valid_orders else Decimal(0)
 
     return success_response({
         "period": {
@@ -206,21 +209,32 @@ async def order_timeline(
     """Get order timeline - daily order count and amount."""
     today = date.today()
     start = today - timedelta(days=days - 1)  # 包含今天:共 days 天
+    s_dt = datetime.combine(start, datetime.min.time())
+    e_dt = datetime.combine(today, datetime.max.time())
+
+    # 单条 SQL:按 DATE(created_at) 分组,一次拿齐每日订单数和总金额
+    day_col = func.date(Order.created_at).label("d")
+    rows = (
+        db.query(
+            day_col,
+            func.count(Order.id).label("cnt"),
+            func.coalesce(func.sum(Order.total_amount), 0).label("amt"),
+        )
+        .filter(Order.created_at >= s_dt, Order.created_at <= e_dt)
+        .group_by(day_col)
+        .all()
+    )
+    by_day = {str(r.d): (int(r.cnt), Decimal(str(r.amt))) for r in rows}
 
     timeline_data = []
     for i in range(days):
         day = start + timedelta(days=i)
-        orders = db.query(Order).filter(
-            Order.created_at >= datetime.combine(day, datetime.min.time()),
-            Order.created_at <= datetime.combine(day, datetime.max.time())
-        ).all()
-
-        daily_amount = sum(o.total_amount for o in orders) or Decimal(0)
+        cnt, amt = by_day.get(day.isoformat(), (0, Decimal(0)))
         timeline_data.append({
             "date": day.isoformat(),
-            "order_count": len(orders),
-            "total_amount": float(daily_amount),
-            "avg_order_value": float(daily_amount / len(orders)) if orders else 0
+            "order_count": cnt,
+            "total_amount": float(amt),
+            "avg_order_value": float(amt / cnt) if cnt else 0,
         })
 
     return success_response({

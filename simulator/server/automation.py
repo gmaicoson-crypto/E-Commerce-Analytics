@@ -18,8 +18,9 @@ from notify_client import notify
 class AutoConfig:
     events_per_min: float = 60.0       # 默认 1 事件/秒
     register_weight: float = 0.25      # 25% 注册 / 75% 下单
+    # 字段保留向后兼容,但新规则下 _tick_order 强制 status=pending,不再读此权重
     order_status_weights: Dict[str, int] = field(default_factory=lambda: {
-        "pending": 15, "paid": 15, "shipped": 15, "completed": 45, "cancelled": 10,
+        "pending": 100,
     })
 
 
@@ -96,11 +97,9 @@ class AutomationEngine:
             print(f"[automation] register error: {e}")
 
     def _tick_order(self, db) -> None:
-        statuses = list(self.config.order_status_weights.keys())
-        weights = list(self.config.order_status_weights.values())
-        status = random.choices(statuses, weights=weights)[0]
+        # 新规则:自动化只生成 pending 订单,后续状态由人工在 simulator 控制面板推进
         try:
-            result = df.create_order(db, status=status)
+            result = df.create_order(db, status="pending")
         except Exception as e:
             print(f"[automation] order error: {e}")
             return

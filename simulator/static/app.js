@@ -23,6 +23,17 @@ const PROVINCES = [
 ]
 const CATEGORIES = ['服装', '电子', '食品', '家居', '美妆']
 const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'completed', 'cancelled', 'refunded']
+
+// 订单状态机:与 backend data_factory.ALLOWED_ORDER_TRANSITIONS 严格对齐
+// 编辑订单时 status 下拉只展示当前状态 + 可达后继
+const ALLOWED_ORDER_TRANSITIONS = {
+  pending:   ['paid', 'cancelled'],
+  paid:      ['shipped', 'refunded'],
+  shipped:   ['completed'],
+  completed: [],
+  cancelled: [],
+  refunded:  [],
+}
 const REFUND_STATUSES = ['processing', 'completed']
 const REFUND_REASONS = ['quality', 'wrong_item', 'no_reason', 'logistics']
 const FINANCE_TYPES = ['income', 'expense']
@@ -57,6 +68,7 @@ const ENTITIES = {
       { key: 'customer_type', label: '类型',   type: 'select', options: ['', 'new', 'returning'] },
     ],
     supportsBulk: true,
+    supportsBulkDelete: true,
     editFields: [
       { key: 'username',      label: '用户名', type: 'text' },
       { key: 'gender',        label: '性别',   type: 'select', options: ['male', 'female'] },
@@ -90,6 +102,7 @@ const ENTITIES = {
       { key: 'stock',    label: '库存', type: 'number', hint: '空=50-500 随机' },
     ],
     supportsBulk: true,
+    supportsBulkDelete: true,
     editFields: [
       { key: 'product_name',        label: '名称',     type: 'text' },
       { key: 'category',            label: '品类',     type: 'select', options: CATEGORIES },
@@ -114,11 +127,12 @@ const ENTITIES = {
       { key: 'status', label: '状态', options: ORDER_STATUSES },
     ],
     createFields: [
-      { key: 'status',      label: '状态',    type: 'select', options: ['', ...ORDER_STATUSES], hint: '空=权重随机' },
+      { key: 'status',      label: '状态',    type: 'select', options: ['', ...ORDER_STATUSES], hint: '空=按权重(新规则下推荐 pending)' },
       { key: 'customer_id', label: '客户 ID', type: 'number', hint: '空=随机' },
     ],
+    supportsBulkDelete: true,
     editFields: [
-      { key: 'status', label: '状态', type: 'select', options: ORDER_STATUSES, hint: '跨 completed 边界会自动同步 finance' },
+      { key: 'status', label: '状态', type: 'select', options: ORDER_STATUSES, hint: '受状态机约束:pending→paid/cancelled,paid→shipped/refunded,shipped→completed' },
     ],
   },
   refund: {
@@ -288,13 +302,18 @@ function renderFilterRow() {
 
 function renderTable(rows) {
   const def = ENTITIES[state.entity]
+  const bulk = def.supportsBulkDelete
+  const checkHead = bulk ? '<th class="check-col"><input type="checkbox" id="head-check" /></th>' : ''
   $('#thead-row').innerHTML =
+    checkHead +
     def.cols.map((c) => `<th>${c.label}</th>`).join('') +
     '<th class="actions">操作</th>'
 
+  const totalCols = def.cols.length + 1 + (bulk ? 1 : 0)
   if (!rows.length) {
     $('#tbody').innerHTML =
-      `<tr><td colspan="${def.cols.length + 1}" class="empty">暂无数据</td></tr>`
+      `<tr><td colspan="${totalCols}" class="empty">暂无数据</td></tr>`
+    syncBulkDeleteBtn()
     return
   }
 
@@ -304,9 +323,10 @@ function renderTable(rows) {
       const display = c.fmt ? c.fmt(v) : (v === null || v === undefined ? '' : String(v))
       return `<td>${escapeHtml(display)}</td>`
     }).join('')
+    const checkCell = bulk ? `<td class="check-col"><input type="checkbox" class="row-check" data-id="${r.id}" /></td>` : ''
     return `
       <tr data-id="${r.id}">
-        ${cells}
+        ${checkCell}${cells}
         <td class="actions">
           <button class="btn ghost small" data-act="edit"  data-id="${r.id}">编辑</button>
           <button class="btn danger small" data-act="del" data-id="${r.id}">删除</button>
@@ -324,6 +344,81 @@ function renderTable(rows) {
   $$('button[data-act="del"]', $('#tbody')).forEach((b) => {
     b.addEventListener('click', () => deleteRow(b.dataset.id))
   })
+
+  // 行 checkbox 监听
+  $$('input.row-check', $('#tbody')).forEach((cb) => {
+    cb.addEventListener('change', syncBulkDeleteBtn)
+  })
+  // 全选 checkbox
+  const headCheck = $('#head-check')
+  if (headCheck) {
+    headCheck.addEventListener('change', () => {
+      $$('input.row-check', $('#tbody')).forEach((cb) => (cb.checked = headCheck.checked))
+      syncBulkDeleteBtn()
+    })
+  }
+  syncBulkDeleteBtn()
+}
+
+function getSelectedIds() {
+  return $$('input.row-check:checked', $('#tbody')).map((cb) => Number(cb.dataset.id))
+}
+
+function syncBulkDeleteBtn() {
+  const btn = $('#btn-bulk-del')
+  if (!btn) return
+  const def = ENTITIES[state.entity]
+  if (!def.supportsBulkDelete) {
+    btn.style.display = 'none'
+    btn.disabled = true
+    return
+  }
+  btn.style.display = ''
+  const ids = getSelectedIds()
+  btn.textContent = `删除选中 (${ids.length})`
+  btn.disabled = ids.length === 0
+  // 同步表头全选状态(部分/全部)
+  const head = $('#head-check')
+  if (head) {
+    const all = $$('input.row-check', $('#tbody'))
+    if (all.length === 0) {
+      head.checked = false
+      head.indeterminate = false
+    } else if (ids.length === all.length) {
+      head.checked = true
+      head.indeterminate = false
+    } else {
+      head.checked = false
+      head.indeterminate = ids.length > 0
+    }
+  }
+}
+
+async function bulkDeleteSelected() {
+  const def = ENTITIES[state.entity]
+  if (!def.supportsBulkDelete) return
+  const ids = getSelectedIds()
+  if (ids.length === 0) return
+  if (!confirm(`确认删除选中的 ${ids.length} 条 ${def.label}?`)) return
+  try {
+    const result = await api(`/${state.entity}/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    })
+    const okCount = result.deleted?.length ?? 0
+    const skipCount = result.skipped?.length ?? 0
+    if (okCount > 0) {
+      log(`批量删除 ${def.label}:成功 ${okCount} 条${skipCount ? `,跳过 ${skipCount} 条` : ''}`, 'ok')
+    }
+    if (skipCount > 0) {
+      const reasons = result.skipped.map((s) => `#${s.id}(${s.reason})`).join(', ')
+      log(`跳过原因:${reasons}`, 'err')
+    }
+    loadList()
+    refreshCounts()
+  } catch (e) {
+    log(`批量删除失败:${e.message}`, 'err')
+  }
 }
 
 function renderPagination(pg) {
@@ -385,7 +480,14 @@ function openModal(mode, row) {
     let val = row ? (row[f.key] === null || row[f.key] === undefined ? '' : row[f.key]) : ''
     if (!row && (val === '' || val === undefined) && f.default !== undefined) val = f.default
     if (f.type === 'select') {
-      const opts = f.options.map((o) => {
+      // 状态机过滤:编辑订单的 status 字段时,只展示当前状态 + 可达后继
+      let options = f.options
+      if (mode === 'edit' && state.entity === 'order' && f.key === 'status' && row) {
+        const cur = row.status
+        const reachable = ALLOWED_ORDER_TRANSITIONS[cur] ?? []
+        options = [cur, ...reachable]
+      }
+      const opts = options.map((o) => {
         const lbl = o === '' ? '(随机/默认)' : o
         const selected = String(val) === String(o) ? ' selected' : ''
         return `<option value="${o}"${selected}>${lbl}</option>`
@@ -558,6 +660,7 @@ $$('.tab').forEach((tab) => {
 })
 
 $('#btn-new').addEventListener('click', () => openModal('create', null))
+$('#btn-bulk-del').addEventListener('click', bulkDeleteSelected)
 $('#btn-clear-log').addEventListener('click', () => { logEl.textContent = '' })
 $('#modal-close').addEventListener('click', closeModal)
 $('#modal-cancel').addEventListener('click', closeModal)

@@ -82,6 +82,7 @@ export const FIN_TYPE_ZH: Record<string, string> = {
 }
 export const FIN_CATEGORY_ZH: Record<string, string> = {
   sales_income:   '销售收入',
+  product_cost:   '商品成本',
   logistics_cost: '物流成本',
   ad_cost:        '广告成本',
   refund_out:     '退款支出',

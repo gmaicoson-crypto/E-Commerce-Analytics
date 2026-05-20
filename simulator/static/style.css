@@ -73,6 +73,12 @@ main { max-width:1320px; margin:24px auto; padding:0 24px; display:flex; flex-di
 .table td.actions, .table th.actions { white-space:nowrap; }
 .table td.actions .btn { margin-right:4px; }
 .table .empty { text-align:center; color:var(--text3); padding:32px 0; }
+.table th.check-col, .table td.check-col { width:36px; text-align:center; padding:8px 6px; }
+.table th.check-col input, .table td.check-col input { cursor:pointer; width:15px; height:15px; accent-color:#52b788; vertical-align:middle; }
+
+/* 工具栏右侧操作按钮组(+ 新增 / 删除选中) */
+.pane-actions { display:flex; gap:8px; align-items:center; }
+.btn.danger:disabled { background:#f3f4f6; color:#9ca3af; cursor:not-allowed; }
 
 /* 分页 */
 .pagination { display:flex; align-items:center; gap:8px; justify-content:flex-end; flex-wrap:wrap; }

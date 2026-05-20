@@ -4,7 +4,7 @@
 backend(8000) /api/notify,backend 通过 SSE 广播给主前端 refetch。
 """
 from pathlib import Path
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -137,6 +137,10 @@ class NotificationUpdate(BaseModel):
     content: Optional[str] = None
 
 
+class BulkDeleteBody(BaseModel):
+    ids: List[int]
+
+
 def _ok(data: Any) -> Dict[str, Any]:
     return {"code": 200, "message": "ok", "data": data}
 
@@ -236,6 +240,14 @@ def api_customer_delete(id: int, db: Session = Depends(get_db)):
     return _ok(result)
 
 
+@app.post("/api/customer/bulk-delete")
+def api_customer_bulk_delete(body: BulkDeleteBody, db: Session = Depends(get_db)):
+    result = df.delete_customers(db, body.ids)
+    if result["deleted"]:
+        notify("customer", "delete", {"ids": result["deleted"], "count": len(result["deleted"])})
+    return _ok(result)
+
+
 # ─── Product ───────────────────────────────────────────────────────────
 
 @app.get("/api/product/list")
@@ -297,6 +309,14 @@ def api_product_delete(id: int, db: Session = Depends(get_db)):
     return _ok(result)
 
 
+@app.post("/api/product/bulk-delete")
+def api_product_bulk_delete(body: BulkDeleteBody, db: Session = Depends(get_db)):
+    result = df.delete_products(db, body.ids)
+    if result["deleted"]:
+        notify("product", "delete", {"ids": result["deleted"], "count": len(result["deleted"])})
+    return _ok(result)
+
+
 # ─── Order ─────────────────────────────────────────────────────────────
 
 @app.get("/api/order/list")
@@ -328,6 +348,8 @@ def api_order_update(id: int, body: OrderUpdate, db: Session = Depends(get_db)):
     result = df.update_order(db, id, status=body.status)
     if result is None:
         _err("订单不存在", 404)
+    if result == "invalid_transition":
+        _err("当前订单状态不允许此变更", 400)
     notify("order", "update", result["row"])
     if result.get("finance_added"):
         for f in result["finance_added"]:
@@ -345,6 +367,15 @@ def api_order_delete(id: int, db: Session = Depends(get_db)):
     notify("order", "delete", info)
     notify("finance", "delete", {"order_id": id})
     return _ok(info)
+
+
+@app.post("/api/order/bulk-delete")
+def api_order_bulk_delete(body: BulkDeleteBody, db: Session = Depends(get_db)):
+    result = df.delete_orders(db, body.ids)
+    if result["deleted"]:
+        notify("order", "delete", {"ids": result["deleted"], "count": len(result["deleted"])})
+        notify("finance", "delete", {"order_ids": result["deleted"]})
+    return _ok(result)
 
 
 # ─── Refund ────────────────────────────────────────────────────────────

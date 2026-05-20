@@ -23,6 +23,21 @@ from models import (
 )
 
 
+# ─── 订单状态机:单向不可逆,有终态 ─────────────────────────────────────
+# pending → {paid, cancelled}
+# paid    → {shipped, refunded}
+# shipped → {completed}
+# completed / cancelled / refunded → 终态(不可转出)
+ALLOWED_ORDER_TRANSITIONS: Dict[OrderStatusEnum, set] = {
+    OrderStatusEnum.pending:   {OrderStatusEnum.paid, OrderStatusEnum.cancelled},
+    OrderStatusEnum.paid:      {OrderStatusEnum.shipped, OrderStatusEnum.refunded},
+    OrderStatusEnum.shipped:   {OrderStatusEnum.completed},
+    OrderStatusEnum.completed: set(),
+    OrderStatusEnum.cancelled: set(),
+    OrderStatusEnum.refunded:  set(),
+}
+
+
 PROVINCES = [
     # 直辖市
     "北京", "上海", "天津", "重庆",
@@ -277,19 +292,34 @@ def sweep_stale_stock_alerts(db: Session) -> List[int]:
     return deleted
 
 
-def _add_completed_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
-    """订单进入 completed 时,补 3 条 finance(sales_income + logistics + ad)。"""
+def _order_product_cost(db: Session, order_id: int) -> Decimal:
+    """计算订单的商品成本:SUM(qty × product.cost)。"""
+    total = Decimal("0")
+    items = db.query(OrderItem).filter(OrderItem.order_id == order_id).all()
+    for it in items:
+        p = db.query(Product).filter(Product.id == it.product_id).first()
+        if p:
+            total += (Decimal(it.quantity) * (p.cost or Decimal("0"))).quantize(Decimal("0.01"))
+    return total
+
+
+def _add_sale_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
+    """订单进入 paid 时,补 3 条 finance(sales_income + product_cost + ad_cost)。
+
+    幂等:若 order 已经有这些 category 的记录,会先跳过(由调用方保证只在
+    pending→paid 边界调用一次,这里不做额外校验)。
+    """
     now = datetime.utcnow()
     subtotal = order.total_amount or Decimal("0")
+    product_cost = _order_product_cost(db, order.id)
     records = [
         FinanceRecord(
             type=FinanceTypeEnum.income, category=FinanceCategoryEnum.sales_income,
             amount=subtotal, related_order_id=order.id, recorded_at=now,
         ),
         FinanceRecord(
-            type=FinanceTypeEnum.expense, category=FinanceCategoryEnum.logistics_cost,
-            amount=(subtotal * Decimal("0.08")).quantize(Decimal("0.01")),
-            related_order_id=order.id, recorded_at=now,
+            type=FinanceTypeEnum.expense, category=FinanceCategoryEnum.product_cost,
+            amount=product_cost, related_order_id=order.id, recorded_at=now,
         ),
         FinanceRecord(
             type=FinanceTypeEnum.expense, category=FinanceCategoryEnum.ad_cost,
@@ -300,6 +330,20 @@ def _add_completed_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
     db.add_all(records)
     db.flush()
     return [_ser_finance(r) for r in records]
+
+
+def _add_logistics_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
+    """订单进入 shipped 时,补 1 条 logistics_cost。"""
+    now = datetime.utcnow()
+    subtotal = order.total_amount or Decimal("0")
+    record = FinanceRecord(
+        type=FinanceTypeEnum.expense, category=FinanceCategoryEnum.logistics_cost,
+        amount=(subtotal * Decimal("0.08")).quantize(Decimal("0.01")),
+        related_order_id=order.id, recorded_at=now,
+    )
+    db.add(record)
+    db.flush()
+    return [_ser_finance(record)]
 
 
 def _remove_finance_for_order(db: Session, order_id: int) -> int:
@@ -355,6 +399,21 @@ def delete_customer(db, id) -> Union[Dict[str, Any], str, None]:
     db.delete(c)
     db.commit()
     return info
+
+
+def delete_customers(db, ids: List[int]) -> Dict[str, Any]:
+    """批量删除客户。有订单关联的跳过,返回成功/跳过两组。"""
+    deleted: List[int] = []
+    skipped: List[Dict[str, Any]] = []
+    for cid in ids:
+        c = db.query(Customer).filter(Customer.id == cid).first()
+        if not c:
+            skipped.append({"id": cid, "reason": "not_found"}); continue
+        if db.query(Order).filter(Order.customer_id == cid).count() > 0:
+            skipped.append({"id": cid, "reason": "has_orders"}); continue
+        db.delete(c); deleted.append(cid)
+    db.commit()
+    return {"deleted": deleted, "skipped": skipped}
 
 
 # ─── Product ───────────────────────────────────────────────────────────
@@ -425,12 +484,30 @@ def delete_product(db, id) -> Union[Dict[str, Any], str, None]:
     return info
 
 
+def delete_products(db, ids: List[int]) -> Dict[str, Any]:
+    """批量删除商品。被订单引用的跳过。"""
+    deleted: List[int] = []
+    skipped: List[Dict[str, Any]] = []
+    for pid in ids:
+        p = db.query(Product).filter(Product.id == pid).first()
+        if not p:
+            skipped.append({"id": pid, "reason": "not_found"}); continue
+        if db.query(OrderItem).filter(OrderItem.product_id == pid).count() > 0:
+            skipped.append({"id": pid, "reason": "in_use"}); continue
+        db.delete(p); deleted.append(pid)
+    db.commit()
+    return {"deleted": deleted, "skipped": skipped}
+
+
 # ─── Order ─────────────────────────────────────────────────────────────
 
 def create_order(db, *, status=None, customer_id=None):
-    """创建订单 + 随机 1-3 件 order_items。completed 状态自动落 3 条 finance。
+    """创建订单 + 随机 1-3 件 order_items。按初始 status 落对应 finance:
+      - status >= paid     → sales_income + product_cost + ad_cost
+      - status >= shipped  → 额外 + logistics_cost
+    pending / cancelled / refunded 不落 finance。
 
-    返回:{"row": order_dict, "finance": [3 条 finance] | None, "notifs": [库存预警 dict, ...]}
+    返回:{"row": order_dict, "finance": [...] | None, "notifs": [库存预警 dict, ...]}
     customer/产品不足时返回 None。
     """
     if customer_id:
@@ -498,10 +575,13 @@ def create_order(db, *, status=None, customer_id=None):
     elif order.status == OrderStatusEnum.cancelled and random.random() < 0.3:
         order.paid_at = now
 
-    finance = None
+    finance: List[Dict[str, Any]] = []
+    if order.status in (OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed):
+        finance.extend(_add_sale_finance(db, order))
+    if order.status in (OrderStatusEnum.shipped, OrderStatusEnum.completed):
+        finance.extend(_add_logistics_finance(db, order))
     if order.status == OrderStatusEnum.completed:
         order.completed_at = now
-        finance = _add_completed_finance(db, order)
 
     # 扣库存后逐商品检查阈值,跌破则落一条 stock_alert 通知
     notifs: List[Dict[str, Any]] = []
@@ -512,13 +592,22 @@ def create_order(db, *, status=None, customer_id=None):
 
     db.commit()
     db.refresh(order)
-    return {"row": _ser_order(order), "finance": finance, "notifs": notifs}
+    return {"row": _ser_order(order), "finance": finance or None, "notifs": notifs}
 
 
 def update_order(db, id, *, status=None):
-    """订单状态变更。跨 completed 边界同步 finance。
+    """订单状态变更。按状态机转移同步 finance_records。受 ALLOWED_ORDER_TRANSITIONS 状态机约束。
 
-    返回:{"row": ..., "finance_added": [...] | None, "finance_removed": int}
+    finance 同步规则(新):
+      - pending → paid     : 写入 sales_income + product_cost + ad_cost
+      - paid    → shipped  : 写入 logistics_cost
+      - paid    → refunded : 删除该订单所有 finance(销售已撤销)
+      - shipped → completed: 无新增(已就位)
+
+    返回:
+      - {"row": ..., "finance_added": [...] | None, "finance_removed": int} 成功
+      - None 订单不存在
+      - "invalid_transition" 字符串 当前 status 不允许转到 new_status
     """
     o = db.query(Order).filter(Order.id == id).first()
     if not o:
@@ -527,26 +616,40 @@ def update_order(db, id, *, status=None):
         return {"row": _ser_order(o), "finance_added": None, "finance_removed": 0}
 
     new_status = OrderStatusEnum(status)
-    was_completed = o.status == OrderStatusEnum.completed
+    # 状态机校验:只允许 ALLOWED_ORDER_TRANSITIONS 中预定义的路径;不变 status 直接放行
+    if new_status != o.status:
+        if new_status not in ALLOWED_ORDER_TRANSITIONS.get(o.status, set()):
+            return "invalid_transition"
+
+    old_status = o.status
     now = datetime.utcnow()
 
     o.status = new_status
     if new_status in (OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed) and not o.paid_at:
         o.paid_at = now
+    if new_status == OrderStatusEnum.completed:
+        o.completed_at = now
+    elif old_status == OrderStatusEnum.completed and new_status != OrderStatusEnum.completed:
+        # 终态理论上不可回退,这里只是防御性兜底
+        o.completed_at = None
 
-    finance_added: Optional[List[Dict[str, Any]]] = None
+    finance_added: List[Dict[str, Any]] = []
     finance_removed = 0
 
-    if new_status == OrderStatusEnum.completed and not was_completed:
-        o.completed_at = now
-        finance_added = _add_completed_finance(db, o)
-    elif was_completed and new_status != OrderStatusEnum.completed:
+    if old_status == OrderStatusEnum.pending and new_status == OrderStatusEnum.paid:
+        finance_added.extend(_add_sale_finance(db, o))
+    elif old_status == OrderStatusEnum.paid and new_status == OrderStatusEnum.shipped:
+        finance_added.extend(_add_logistics_finance(db, o))
+    elif old_status == OrderStatusEnum.paid and new_status == OrderStatusEnum.refunded:
         finance_removed = _remove_finance_for_order(db, o.id)
-        o.completed_at = None
 
     db.commit()
     db.refresh(o)
-    return {"row": _ser_order(o), "finance_added": finance_added, "finance_removed": finance_removed}
+    return {
+        "row": _ser_order(o),
+        "finance_added": finance_added or None,
+        "finance_removed": finance_removed,
+    }
 
 
 def delete_order(db, id) -> Optional[Dict[str, Any]]:
@@ -559,6 +662,22 @@ def delete_order(db, id) -> Optional[Dict[str, Any]]:
     db.delete(o)  # cascade order_items
     db.commit()
     return info
+
+
+def delete_orders(db, ids: List[int]) -> Dict[str, Any]:
+    """批量删除订单。同 single delete:级联清理 finance / refund / order_items。"""
+    deleted: List[int] = []
+    skipped: List[Dict[str, Any]] = []
+    for oid in ids:
+        o = db.query(Order).filter(Order.id == oid).first()
+        if not o:
+            skipped.append({"id": oid, "reason": "not_found"}); continue
+        db.query(FinanceRecord).filter(FinanceRecord.related_order_id == oid).delete()
+        db.query(Refund).filter(Refund.order_id == oid).delete()
+        db.delete(o)  # cascade order_items via FK
+        deleted.append(oid)
+    db.commit()
+    return {"deleted": deleted, "skipped": skipped}
 
 
 # ─── Refund ────────────────────────────────────────────────────────────

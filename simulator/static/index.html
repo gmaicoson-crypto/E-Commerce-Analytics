@@ -45,7 +45,10 @@
     <section class="card pane" id="crud-pane">
       <div class="pane-head">
         <div class="filter-row" id="filter-row"></div>
-        <button class="btn primary" id="btn-new">+ 新增</button>
+        <div class="pane-actions">
+          <button class="btn danger" id="btn-bulk-del" disabled style="display:none">删除选中 (0)</button>
+          <button class="btn primary" id="btn-new">+ 新增</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table class="table" id="table">
@@ -86,8 +89,8 @@
 
       <p class="auto-hint">
         提示:首次启动前请先在「商品」tab 创建至少 1 个上架商品。订单事件需要 on_sale 商品才能成交;
-        「跳过」计数能告诉你为什么订单数没涨。下单 status 会按 pending / paid / shipped / completed
-        加权随机,completed 自动级联 3 条 finance(销售收入 + 物流 + 广告)。
+        「跳过」计数能告诉你为什么订单数没涨。新规则下,自动化只生成 <strong>pending</strong> 订单,
+        后续状态(支付 / 发货 / 完成 / 取消 / 退款)需在「订单」tab 手动推进,以模拟真实订单生命周期。
       </p>
     </section>
 

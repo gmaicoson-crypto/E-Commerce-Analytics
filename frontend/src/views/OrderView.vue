@@ -97,7 +97,8 @@ const orders     = ref<Array<{ id: string; username: string; amount: number; sta
 
 async function loadOrders() {
   const status = filter.value === '全部' ? undefined : ORDER_STATUS_EN[filter.value]
-  const resp = await api.getOrdersList(1, 100, status)
+  // 拉满,前端分页(每页 20)。与「财务流水明细」同款做法。
+  const resp = await api.getOrdersList(1, 10000, status)
   const list: OrderListItem[] = resp?.data ?? []
   orders.value = list.map(o => ({
     id: o.order_no,

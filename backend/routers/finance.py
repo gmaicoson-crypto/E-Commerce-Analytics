@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, date
 from decimal import Decimal
+from typing import Dict
 from database import get_db
 from dependencies import check_module_permission
-from models import FinanceRecord, Order, OrderItem, Product
+from models import FinanceRecord, Order
 from utils import success_response, parse_date_range
 
 router = APIRouter()
@@ -22,45 +23,34 @@ async def finance_kpi(
     """Get finance KPI overview."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
-    records = db.query(FinanceRecord).filter(
-        FinanceRecord.recorded_at >= datetime.combine(start, datetime.min.time()),
-        FinanceRecord.recorded_at <= datetime.combine(end, datetime.max.time())
-    ).all()
+    s_dt = datetime.combine(start, datetime.min.time())
+    e_dt = datetime.combine(end, datetime.max.time())
 
-    income = sum(r.amount for r in records if r.type.value == "income") or Decimal(0)
-
-    # 新规则:总支出 = 物流成本 + 广告成本 + 已完成订单的商品成本
-    #   - 物流/广告:来自 finance_records 表(_add_completed_finance 写入)
-    #   - 商品成本:SUM(OrderItem.quantity × Product.cost) WHERE Order.status='completed'
-    logistics_ad = sum(
-        r.amount for r in records
-        if r.type.value == "expense" and r.category.value in ("logistics_cost", "ad_cost")
-    ) or Decimal(0)
-
-    product_cost_raw = (
-        db.query(func.coalesce(func.sum(OrderItem.quantity * Product.cost), 0))
-        .join(Order, Order.id == OrderItem.order_id)
-        .join(Product, Product.id == OrderItem.product_id)
-        .filter(
-            Order.status == "completed",
-            Order.created_at >= datetime.combine(start, datetime.min.time()),
-            Order.created_at <= datetime.combine(end, datetime.max.time()),
+    # 状态机已保证 FinanceRecord 与 Order 强同步:
+    #   - paid     → 写入 sales_income + product_cost + ad_cost
+    #   - shipped  → 写入 logistics_cost
+    #   - refunded → 删除该订单全部 finance
+    # 因此一条 SQL GROUP BY + 条件聚合即可拿齐所有 KPI。
+    row = (
+        db.query(
+            func.coalesce(func.sum(case((FinanceRecord.category == "sales_income",   FinanceRecord.amount), else_=0)), 0).label("income"),
+            func.coalesce(func.sum(case((FinanceRecord.category == "product_cost",   FinanceRecord.amount), else_=0)), 0).label("product_cost"),
+            func.coalesce(func.sum(case((FinanceRecord.category == "logistics_cost", FinanceRecord.amount), else_=0)), 0).label("logistics_cost"),
+            func.coalesce(func.sum(case((FinanceRecord.category == "ad_cost",        FinanceRecord.amount), else_=0)), 0).label("ad_cost"),
+            func.count(func.distinct(case((FinanceRecord.category == "sales_income", FinanceRecord.related_order_id), else_=None))).label("orders"),
         )
-        .scalar()
-    ) or 0
-    product_cost = Decimal(str(product_cost_raw))
+        .filter(FinanceRecord.recorded_at >= s_dt, FinanceRecord.recorded_at <= e_dt)
+        .one()
+    )
+    income         = Decimal(str(row.income))
+    product_cost   = Decimal(str(row.product_cost))
+    logistics_cost = Decimal(str(row.logistics_cost))
+    ad_cost        = Decimal(str(row.ad_cost))
+    orders         = int(row.orders or 0)
 
-    expense = logistics_ad + product_cost
+    expense = product_cost + logistics_cost + ad_cost
     profit = income - expense
-
     profit_margin = (profit / income * 100) if income > 0 else 0
-
-    # Get order count for context
-    orders = db.query(Order).filter(
-        Order.created_at >= datetime.combine(start, datetime.min.time()),
-        Order.created_at <= datetime.combine(end, datetime.max.time()),
-        Order.status.in_(["paid", "shipped", "completed"])
-    ).count()
 
     return success_response({
         "period": {
@@ -171,23 +161,32 @@ async def finance_trend(
     """Get finance trend over time."""
     today = date.today()
     start = today - timedelta(days=days - 1)  # 包含今天:共 days 天
+    s_dt = datetime.combine(start, datetime.min.time())
+    e_dt = datetime.combine(today, datetime.max.time())
+
+    # 单条 SQL:按 DATE(recorded_at) 分组,一次拿齐所有天的 income / expense
+    day_col = func.date(FinanceRecord.recorded_at).label("d")
+    rows = (
+        db.query(
+            day_col,
+            func.coalesce(func.sum(case((FinanceRecord.type == "income",  FinanceRecord.amount), else_=0)), 0).label("income"),
+            func.coalesce(func.sum(case((FinanceRecord.type == "expense", FinanceRecord.amount), else_=0)), 0).label("expense"),
+        )
+        .filter(FinanceRecord.recorded_at >= s_dt, FinanceRecord.recorded_at <= e_dt)
+        .group_by(day_col)
+        .all()
+    )
+    by_day = {str(r.d): (Decimal(str(r.income)), Decimal(str(r.expense))) for r in rows}
 
     trend_data = []
     for i in range(days):
         day = start + timedelta(days=i)
-        records = db.query(FinanceRecord).filter(
-            FinanceRecord.recorded_at >= datetime.combine(day, datetime.min.time()),
-            FinanceRecord.recorded_at <= datetime.combine(day, datetime.max.time())
-        ).all()
-
-        income = sum(r.amount for r in records if r.type.value == "income") or Decimal(0)
-        expense = sum(r.amount for r in records if r.type.value == "expense") or Decimal(0)
-
+        income, expense = by_day.get(day.isoformat(), (Decimal(0), Decimal(0)))
         trend_data.append({
             "date": day.isoformat(),
             "income": float(income),
             "expense": float(expense),
-            "profit": float(income - expense)
+            "profit": float(income - expense),
         })
 
     return success_response({
@@ -204,29 +203,42 @@ async def expense_breakdown(
     current_user=Depends(check_module_permission("finance_overview")),
     db: Session = Depends(get_db)
 ):
-    """Get expense breakdown by category."""
+    """Get expense breakdown by category.
+
+    与 /kpi 同口径,从 FinanceRecord 表 GROUP BY category 一次取齐
+    (状态机已保证它和 Order 强同步)。
+    """
     start, end = parse_date_range(date_range, start_date, end_date)
+    s_dt = datetime.combine(start, datetime.min.time())
+    e_dt = datetime.combine(end, datetime.max.time())
 
-    records = db.query(FinanceRecord).filter(
-        FinanceRecord.recorded_at >= datetime.combine(start, datetime.min.time()),
-        FinanceRecord.recorded_at <= datetime.combine(end, datetime.max.time()),
-        FinanceRecord.type.in_(["expense"])
-    ).all()
-
-    category_stats = {}
-    for record in records:
-        cat = record.category.value if record.category else "Unknown"
-        if cat not in category_stats:
-            category_stats[cat] = Decimal(0)
-        category_stats[cat] += record.amount
+    rows = (
+        db.query(
+            FinanceRecord.category,
+            func.coalesce(func.sum(FinanceRecord.amount), 0).label("amt"),
+        )
+        .filter(
+            FinanceRecord.recorded_at >= s_dt,
+            FinanceRecord.recorded_at <= e_dt,
+            FinanceRecord.type == "expense",
+        )
+        .group_by(FinanceRecord.category)
+        .all()
+    )
+    category_amounts: Dict[str, Decimal] = {
+        (r.category.value if hasattr(r.category, "value") else r.category): Decimal(str(r.amt))
+        for r in rows
+        if Decimal(str(r.amt)) > 0
+    }
+    total = sum(category_amounts.values()) or Decimal(0)
 
     data = [
         {
             "category": cat,
             "amount": float(amount),
-            "percentage": round((amount / sum(category_stats.values()) * 100), 2) if category_stats else 0
+            "percentage": round(float(amount / total * 100), 2) if total > 0 else 0,
         }
-        for cat, amount in sorted(category_stats.items(), key=lambda x: x[1], reverse=True)
+        for cat, amount in sorted(category_amounts.items(), key=lambda x: x[1], reverse=True)
     ]
 
     return success_response({
@@ -234,7 +246,7 @@ async def expense_breakdown(
             "start": start.isoformat(),
             "end": end.isoformat()
         },
-        "total_expense": float(sum(category_stats.values()) or 0),
+        "total_expense": float(total),
         "data": data
     })
 
@@ -260,19 +272,23 @@ async def finance_records(
         (page - 1) * page_size
     ).limit(page_size).all()
 
+    # 一次性把本页所有 related_order_id 对应的 order_no 取出来,避免 N+1 查询
+    order_ids = {r.related_order_id for r in records if r.related_order_id}
+    order_no_map: Dict[int, str] = {}
+    if order_ids:
+        order_no_map = {
+            o.id: o.order_no
+            for o in db.query(Order.id, Order.order_no).filter(Order.id.in_(order_ids)).all()
+        }
+
     data = []
     for r in records:
-        order_no = None
-        if r.related_order_id:
-            order = db.query(Order).filter(Order.id == r.related_order_id).first()
-            order_no = order.order_no if order else None
-
         data.append({
             "id": r.id,
             "type": r.type.value if r.type else "Unknown",
             "category": r.category.value if r.category else "Unknown",
             "amount": float(r.amount),
-            "order_no": order_no,
+            "order_no": order_no_map.get(r.related_order_id) if r.related_order_id else None,
             "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None
         })
 
@@ -296,26 +312,34 @@ async def cash_flow(
     """Get cash flow analysis."""
     today = date.today()
     start = today - timedelta(days=days)
+    s_dt = datetime.combine(start, datetime.min.time())
+    e_dt = datetime.combine(today, datetime.max.time())
+
+    # 单条 SQL:按 DATE(recorded_at) 分组,一次拿齐所有天的 income / expense
+    day_col = func.date(FinanceRecord.recorded_at).label("d")
+    rows = (
+        db.query(
+            day_col,
+            func.coalesce(func.sum(case((FinanceRecord.type == "income",  FinanceRecord.amount), else_=0)), 0).label("income"),
+            func.coalesce(func.sum(case((FinanceRecord.type == "expense", FinanceRecord.amount), else_=0)), 0).label("expense"),
+        )
+        .filter(FinanceRecord.recorded_at >= s_dt, FinanceRecord.recorded_at <= e_dt)
+        .group_by(day_col)
+        .all()
+    )
+    by_day = {str(r.d): (Decimal(str(r.income)), Decimal(str(r.expense))) for r in rows}
 
     cumulative_profit = Decimal(0)
     cash_flow_data = []
-
     for i in range(days):
         day = start + timedelta(days=i)
-        records = db.query(FinanceRecord).filter(
-            FinanceRecord.recorded_at >= datetime.combine(day, datetime.min.time()),
-            FinanceRecord.recorded_at <= datetime.combine(day, datetime.max.time())
-        ).all()
-
-        income = sum(r.amount for r in records if r.type.value == "income") or Decimal(0)
-        expense = sum(r.amount for r in records if r.type.value == "expense") or Decimal(0)
+        income, expense = by_day.get(day.isoformat(), (Decimal(0), Decimal(0)))
         daily_profit = income - expense
         cumulative_profit += daily_profit
-
         cash_flow_data.append({
             "date": day.isoformat(),
             "daily_profit": float(daily_profit),
-            "cumulative_profit": float(cumulative_profit)
+            "cumulative_profit": float(cumulative_profit),
         })
 
     return success_response({
