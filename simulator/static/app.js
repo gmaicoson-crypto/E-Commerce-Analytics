@@ -566,11 +566,25 @@ async function submitModal() {
 
 const AUTO = {
   poller: null,
-  async start() {
-    const body = {
-      events_per_min: Number($('#auto-rate').value) || 60,
-      register_weight: (Number($('#auto-reg').value) || 25) / 100,
+  readConfig() {
+    const num = (id, fallback) => {
+      const v = Number($(`#${id}`).value)
+      return Number.isFinite(v) ? v : fallback
     }
+    const pct = (id, fallback) => num(id, fallback) / 100
+    return {
+      events_per_min:       num('auto-rate', 60),
+      register_weight:      pct('auto-reg', 25),
+      advances_per_min:     num('auto-adv-rate', 30),
+      pending_to_paid:      pct('tr-pp', 60),
+      pending_to_cancel:    pct('tr-pc', 10),
+      paid_to_shipped:      pct('tr-ps', 60),
+      paid_to_refunded:     pct('tr-pr', 5),
+      shipped_to_completed: pct('tr-sc', 80),
+    }
+  },
+  async start() {
+    const body = AUTO.readConfig()
     try {
       const r = await fetch('/api/automation/start', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -578,7 +592,7 @@ const AUTO = {
       })
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       const j = await r.json()
-      log(`自动化已启动 @ ${body.events_per_min}/min, 注册占比 ${Math.round(body.register_weight * 100)}%`, 'ok')
+      log(`自动化已启动 @ ${body.events_per_min}/min 生成, ${body.advances_per_min}/min 推进`, 'ok')
       AUTO.applyStatus(j.data)
     } catch (e) {
       log(`自动化启动失败:${e.message}`, 'err')
@@ -613,14 +627,29 @@ const AUTO = {
     $('#auto-elapsed').textContent = t
       ? `· 自 ${new Date(t + 'Z').toLocaleTimeString('zh-CN', { hour12: false })} 开始`
       : ''
-    $('#auto-registered').textContent = (s?.stats?.registered ?? 0).toLocaleString()
-    $('#auto-ordered').textContent    = (s?.stats?.ordered ?? 0).toLocaleString()
-    $('#auto-skip-cust').textContent  = (s?.stats?.skipped_no_customer ?? 0).toLocaleString()
-    $('#auto-skip-prod').textContent  = (s?.stats?.skipped_no_product ?? 0).toLocaleString()
+    const st = s?.stats ?? {}
+    const set = (id, v) => { $(`#${id}`).textContent = (v ?? 0).toLocaleString() }
+    set('auto-registered',    st.registered)
+    set('auto-ordered',       st.ordered)
+    set('auto-skip-cust',     st.skipped_no_customer)
+    set('auto-skip-prod',     st.skipped_no_product)
+    set('auto-adv-paid',      st.adv_paid)
+    set('auto-adv-cancelled', st.adv_cancelled)
+    set('auto-adv-shipped',   st.adv_shipped)
+    set('auto-adv-refunded',  st.adv_refunded)
+    set('auto-adv-completed', st.adv_completed)
     if (running && s?.config) {
-      const r = s.config.events_per_min, w = s.config.register_weight
-      if (r) $('#auto-rate').value = r
-      if (typeof w === 'number') $('#auto-reg').value = Math.round(w * 100)
+      const c = s.config
+      const setNum = (id, v) => { if (typeof v === 'number') $(`#${id}`).value = v }
+      const setPct = (id, v) => { if (typeof v === 'number') $(`#${id}`).value = Math.round(v * 100) }
+      setNum('auto-rate',     c.events_per_min)
+      setPct('auto-reg',      c.register_weight)
+      setNum('auto-adv-rate', c.advances_per_min)
+      setPct('tr-pp',         c.pending_to_paid)
+      setPct('tr-pc',         c.pending_to_cancel)
+      setPct('tr-ps',         c.paid_to_shipped)
+      setPct('tr-pr',         c.paid_to_refunded)
+      setPct('tr-sc',         c.shipped_to_completed)
     }
   },
   bind() {

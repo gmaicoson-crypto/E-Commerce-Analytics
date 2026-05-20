@@ -121,15 +121,45 @@ main { max-width:1320px; margin:24px auto; padding:0 24px; display:flex; flex-di
 .auto-controls input { width:130px; padding:7px 10px; border:1.5px solid var(--border); border-radius:6px; font-size:13px; outline:none; background:#fff; }
 .auto-controls input:focus { border-color:var(--green); }
 .auto-btns     { display:flex; gap:8px; margin-left:auto; }
-.auto-stats    { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+
+/* 章节标题(转移概率上方) */
+.auto-section-title { font-size:13px; font-weight:800; color:var(--green-dark); margin-top:4px; }
+.auto-section-sub   { font-size:11px; color:var(--text3); font-weight:500; margin-left:6px; }
+
+/* 状态机转移概率 — 5 张卡,与 .auto-stats 同栅格、同样式 */
+.auto-transitions { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+.auto-tr-card     { background:var(--green-50); border:1px solid var(--green-100); border-radius:10px; padding:12px; text-align:center; cursor:text; transition:border-color .15s, background .15s; }
+.auto-tr-card:hover, .auto-tr-card:focus-within { border-color:var(--green); background:#fff; }
+.auto-tr-card-label { font-size:11px; color:var(--text2); font-weight:700; margin-bottom:4px; white-space:nowrap; }
+.auto-tr-card-label .arr { color:var(--text3); margin:0 2px; }
+.auto-tr-card-value { display:flex; align-items:baseline; justify-content:center; gap:2px; }
+.auto-tr-card-value input { width:60px; padding:0; border:none; background:transparent; font-size:22px; font-weight:900; color:var(--green-dark); font-family:'SF Mono','Consolas',monospace; text-align:right; outline:none; -moz-appearance:textfield; }
+.auto-tr-card-value input::-webkit-outer-spin-button,
+.auto-tr-card-value input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.auto-tr-card-value .suf { font-size:13px; font-weight:700; color:var(--text3); }
+
+/* 顶部 3px 色条提示目标状态色 — 与订单分析徽章配色一致 */
+.auto-tr-card--paid       { border-top:3px solid #3b82f6; }
+.auto-tr-card--cancelled  { border-top:3px solid #9ca3af; }
+.auto-tr-card--shipped    { border-top:3px solid #8b5cf6; }
+.auto-tr-card--refunded   { border-top:3px solid #ef4444; }
+.auto-tr-card--completed  { border-top:3px solid #52b788; }
+
+.auto-stats    { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
 .auto-stat     { background:var(--green-50); border:1px solid var(--green-100); border-radius:10px; padding:12px; text-align:center; }
 .auto-stat.warn { background:#fef3c7; border-color:#fde68a; }
 .auto-stat .lbl { font-size:11px; color:var(--text2); font-weight:700; margin-bottom:4px; }
 .auto-stat .val { font-size:22px; font-weight:900; color:var(--green-dark); font-family:'SF Mono','Consolas',monospace; }
 .auto-stat.warn .val { color:#92400e; }
 .auto-hint     { font-size:12px; color:var(--text2); background:#f0fdf4; border-left:3px solid var(--green); padding:10px 12px; border-radius:6px; margin:0; line-height:1.7; }
+.auto-hint code { background:#dcfce7; color:var(--green-dark); padding:1px 6px; border-radius:4px; font-family:'SF Mono','Consolas',monospace; font-size:11px; }
 
+@media (max-width: 1200px) {
+  .auto-stats       { grid-template-columns:repeat(3,1fr); }
+  .auto-transitions { grid-template-columns:repeat(3,1fr); }
+}
 @media (max-width: 960px) {
-  .count-grid  { grid-template-columns:repeat(3,1fr); }
-  .auto-stats  { grid-template-columns:repeat(2,1fr); }
+  .count-grid       { grid-template-columns:repeat(3,1fr); }
+  .auto-stats       { grid-template-columns:repeat(2,1fr); }
+  .auto-transitions { grid-template-columns:repeat(2,1fr); }
 }

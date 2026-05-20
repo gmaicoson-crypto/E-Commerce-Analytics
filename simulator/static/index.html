@@ -74,10 +74,40 @@
         <label>注册占比(%)
           <input id="auto-reg" type="number" min="0" max="100" value="25" />
         </label>
+        <label>每分钟推进次数
+          <input id="auto-adv-rate" type="number" min="0" max="600" value="30" />
+        </label>
         <div class="auto-btns">
           <button class="btn primary" id="auto-start">▶ 启动</button>
           <button class="btn danger"  id="auto-stop" disabled>■ 停止</button>
         </div>
+      </div>
+
+      <div class="auto-section-title">
+        状态机转移概率
+        <span class="auto-section-sub">每次推进 tick 选中订单后的出口概率,余下为本次保持不变</span>
+      </div>
+      <div class="auto-transitions">
+        <label class="auto-tr-card auto-tr-card--paid">
+          <div class="auto-tr-card-label">待支付 <span class="arr">→</span> 已支付</div>
+          <div class="auto-tr-card-value"><input id="tr-pp" type="number" min="0" max="100" value="60" /><span class="suf">%</span></div>
+        </label>
+        <label class="auto-tr-card auto-tr-card--cancelled">
+          <div class="auto-tr-card-label">待支付 <span class="arr">→</span> 已取消</div>
+          <div class="auto-tr-card-value"><input id="tr-pc" type="number" min="0" max="100" value="10" /><span class="suf">%</span></div>
+        </label>
+        <label class="auto-tr-card auto-tr-card--shipped">
+          <div class="auto-tr-card-label">已支付 <span class="arr">→</span> 已发货</div>
+          <div class="auto-tr-card-value"><input id="tr-ps" type="number" min="0" max="100" value="60" /><span class="suf">%</span></div>
+        </label>
+        <label class="auto-tr-card auto-tr-card--refunded">
+          <div class="auto-tr-card-label">已支付 <span class="arr">→</span> 已退款</div>
+          <div class="auto-tr-card-value"><input id="tr-pr" type="number" min="0" max="100" value="5" /><span class="suf">%</span></div>
+        </label>
+        <label class="auto-tr-card auto-tr-card--completed">
+          <div class="auto-tr-card-label">已发货 <span class="arr">→</span> 已完成</div>
+          <div class="auto-tr-card-value"><input id="tr-sc" type="number" min="0" max="100" value="80" /><span class="suf">%</span></div>
+        </label>
       </div>
 
       <div class="auto-stats">
@@ -85,12 +115,20 @@
         <div class="auto-stat"><div class="lbl">已下单</div><div class="val" id="auto-ordered">0</div></div>
         <div class="auto-stat warn"><div class="lbl">跳过(无客户)</div><div class="val" id="auto-skip-cust">0</div></div>
         <div class="auto-stat warn"><div class="lbl">跳过(无商品)</div><div class="val" id="auto-skip-prod">0</div></div>
+        <div class="auto-stat"><div class="lbl">推进→已支付</div><div class="val" id="auto-adv-paid">0</div></div>
+        <div class="auto-stat"><div class="lbl">推进→已取消</div><div class="val" id="auto-adv-cancelled">0</div></div>
+        <div class="auto-stat"><div class="lbl">推进→已发货</div><div class="val" id="auto-adv-shipped">0</div></div>
+        <div class="auto-stat"><div class="lbl">推进→已退款</div><div class="val" id="auto-adv-refunded">0</div></div>
+        <div class="auto-stat"><div class="lbl">推进→已完成</div><div class="val" id="auto-adv-completed">0</div></div>
       </div>
 
       <p class="auto-hint">
-        提示:首次启动前请先在「商品」tab 创建至少 1 个上架商品。订单事件需要 on_sale 商品才能成交;
-        「跳过」计数能告诉你为什么订单数没涨。新规则下,自动化只生成 <strong>pending</strong> 订单,
-        后续状态(支付 / 发货 / 完成 / 取消 / 退款)需在「订单」tab 手动推进,以模拟真实订单生命周期。
+        提示:首次启动前请先在「商品」tab 创建至少 1 个上架商品。
+        <br>
+        新规则:「生成循环」按上面的<strong>每分钟事件数</strong>持续产出 pending 订单;
+        「推进循环」按<strong>每分钟推进次数</strong>独立运行,每次从所有非终态订单里随机挑一个,
+        按上面的状态机概率沿 <code>pending→paid→shipped→completed</code> 等路径推进,
+        余下概率即"本次保持不变"。把推进次数设为 0 可彻底关停推进、只生成。
       </p>
     </section>
 

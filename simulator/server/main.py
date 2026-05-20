@@ -159,8 +159,15 @@ def api_counts(db: Session = Depends(get_db)):
 # ─── Automation(后台协程) ────────────────────────────────────────────
 
 class AutoStartBody(BaseModel):
-    events_per_min: Optional[float] = None
-    register_weight: Optional[float] = None
+    events_per_min:        Optional[float] = None
+    register_weight:       Optional[float] = None
+    # 推进循环(新)
+    advances_per_min:      Optional[float] = None
+    pending_to_paid:       Optional[float] = None
+    pending_to_cancel:     Optional[float] = None
+    paid_to_shipped:       Optional[float] = None
+    paid_to_refunded:      Optional[float] = None
+    shipped_to_completed:  Optional[float] = None
 
 
 @app.post("/api/automation/start")
