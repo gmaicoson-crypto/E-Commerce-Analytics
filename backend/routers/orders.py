@@ -248,6 +248,7 @@ async def orders_list(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=10000),
     status_filter: str = Query(None, alias="status"),
+    date_filter: str = Query(None, alias="date"),  # 'YYYY-MM-DD' 仅返回当日订单
     current_user=Depends(check_module_permission("order_analysis")),
     db: Session = Depends(get_db)
 ):
@@ -255,6 +256,14 @@ async def orders_list(
     query = db.query(Order)
     if status_filter:
         query = query.filter(Order.status == status_filter)
+    if date_filter:
+        try:
+            target = date.fromisoformat(date_filter)
+            s_dt = datetime.combine(target, datetime.min.time())
+            e_dt = datetime.combine(target, datetime.max.time())
+            query = query.filter(Order.created_at >= s_dt, Order.created_at <= e_dt)
+        except ValueError:
+            pass  # 无效日期视为不过滤
 
     total = query.count()
     orders = query.order_by(Order.created_at.desc()).offset(

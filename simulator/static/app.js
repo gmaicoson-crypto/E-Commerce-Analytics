@@ -566,6 +566,7 @@ async function submitModal() {
 
 const AUTO = {
   poller: null,
+  firstSync: true,    // 首次 status 同步后置 false;运行中不再覆盖 config 输入,允许用户编辑后 Stop→Start 应用
   readConfig() {
     const num = (id, fallback) => {
       const v = Number($(`#${id}`).value)
@@ -646,7 +647,8 @@ const AUTO = {
     set('auto-adv-shipped',   st.adv_shipped)
     set('auto-adv-refunded',  st.adv_refunded)
     set('auto-adv-completed', st.adv_completed)
-    if (running && s?.config) {
+    // Config 输入:**只在首次加载**同步;之后用户的输入是真理,Stop→Start 后才以 readConfig() 的当前值应用
+    if (s?.config && AUTO.firstSync) {
       const c = s.config
       const setNum = (id, v) => { if (typeof v === 'number') $(`#${id}`).value = v }
       const setPct = (id, v) => { if (typeof v === 'number') $(`#${id}`).value = Math.round(v * 100) }
@@ -662,6 +664,7 @@ const AUTO = {
       if (c.backfill_start_date) $('#bf-start').value = c.backfill_start_date
       if (c.backfill_end_date)   $('#bf-end').value   = c.backfill_end_date
       AUTO.syncBackfillState()
+      AUTO.firstSync = false
     }
   },
   bind() {

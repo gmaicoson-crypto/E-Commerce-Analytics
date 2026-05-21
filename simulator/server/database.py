@@ -11,7 +11,12 @@ DATABASE_URL = os.environ.get(
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
+    # 自动化引擎高并发场景:增大连接池,关掉 pre_ping 的"每次 checkout 跑 SELECT 1"开销,
+    # 用 pool_recycle 兜底防止 MySQL wait_timeout 把连接踢掉(默认 8h)。
+    pool_size=20,
+    max_overflow=20,
+    pool_pre_ping=False,
+    pool_recycle=3600,
     connect_args={"charset": "utf8mb4"},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -367,6 +367,8 @@ def api_order_update(id: int, body: OrderUpdate, db: Session = Depends(get_db)):
             notify("finance", "create", f)
     if result.get("finance_removed"):
         notify("finance", "delete", {"order_id": id, "removed": result["finance_removed"]})
+    if result.get("notif"):
+        notify("notification", "create", result["notif"])
     return _ok(result["row"])
 
 

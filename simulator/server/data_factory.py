@@ -11,9 +11,10 @@
 """
 import random
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional, Dict, Any, List, Union
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 
@@ -25,11 +26,13 @@ _clock = threading.local()
 
 
 def _now() -> datetime:
-    return getattr(_clock, "override", None) or _now()
+    return getattr(_clock, "override", None) or datetime.utcnow()
 
 
 def set_clock_override(ts: Optional[datetime]) -> None:
     _clock.override = ts
+
+
 from models import (
     Customer, Product, Order, OrderItem, FinanceRecord, Notification, Refund,
     CategoryEnum, GenderEnum, AgeGroupEnum, CustomerTypeEnum,
@@ -37,6 +40,17 @@ from models import (
     FinanceTypeEnum, FinanceCategoryEnum,
     NotificationTypeEnum, RefundStatusEnum, RefundReasonEnum,
 )
+
+
+# ─── 通知触发阈值 ──────────────────────────────────────────────────────
+REFUND_ALERT_THRESHOLD     = Decimal("3000")   # 退款金额 ≥ 此值触发 refund_alert
+LARGE_ORDER_THRESHOLD      = Decimal("3000")  # 单笔订单金额 ≥ 此值触发 order_alert
+RAPID_ORDER_WINDOW_MIN     = 10                 # 高频检测窗口(分钟)
+RAPID_ORDER_COUNT          = 3                 # 窗口内订单数 ≥ 此值触发 order_alert
+RAPID_ORDER_DEBOUNCE_MIN   = 60                # 同客户已触发后多少分钟内不重发
+SALES_DEVIATION_RATIO      = Decimal("0.3")    # 当日累计 vs 7 日均偏离 ≥ 此比例触发 sales_alert
+SALES_BASELINE_DAYS        = 5                 # 用过去 N 天日均做基线
+SALES_ALERT_CHECK_HOUR     = 23                # 仅当 _now().hour ≥ 此值时才扫销售额波动(每日临近收盘)
 
 
 # ─── 订单状态机:单向不可逆,有终态 ─────────────────────────────────────
@@ -309,14 +323,14 @@ def sweep_stale_stock_alerts(db: Session) -> List[int]:
 
 
 def _order_product_cost(db: Session, order_id: int) -> Decimal:
-    """计算订单的商品成本:SUM(qty × product.cost)。"""
-    total = Decimal("0")
-    items = db.query(OrderItem).filter(OrderItem.order_id == order_id).all()
-    for it in items:
-        p = db.query(Product).filter(Product.id == it.product_id).first()
-        if p:
-            total += (Decimal(it.quantity) * (p.cost or Decimal("0"))).quantize(Decimal("0.01"))
-    return total
+    """计算订单的商品成本:SUM(qty × product.cost)。单条 JOIN+SUM,替代 N+1 查询。"""
+    result = (
+        db.query(func.coalesce(func.sum(OrderItem.quantity * Product.cost), 0))
+        .join(Product, Product.id == OrderItem.product_id)
+        .filter(OrderItem.order_id == order_id)
+        .scalar()
+    )
+    return Decimal(str(result or 0)).quantize(Decimal("0.01"))
 
 
 def _add_sale_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
@@ -382,6 +396,159 @@ def _add_refund_finance(db: Session, order: Order) -> List[Dict[str, Any]]:
 def _remove_finance_for_order(db: Session, order_id: int) -> int:
     """删订单相关的所有 finance_records。返回删除条数。"""
     return db.query(FinanceRecord).filter(FinanceRecord.related_order_id == order_id).delete()
+
+
+# ─── 业务预警通知 helper(refund / order / sales)─────────────────────
+
+def _push_refund_alert(db: Session, order: Order, amount: Decimal) -> Optional[Dict[str, Any]]:
+    """退款金额 ≥ REFUND_ALERT_THRESHOLD 时写 refund_alert 通知。
+    任何"资金流出退还客户"的路径都调它(create_refund / 状态机 paid→refunded)。
+    """
+    if amount < REFUND_ALERT_THRESHOLD:
+        return None
+    n = Notification(
+        type=NotificationTypeEnum.refund_alert,
+        title="大额退款",
+        content=f"订单 {order.order_no} 发生退款,金额 ¥{float(amount):.2f}",
+        is_read=False,
+        created_at=_now(),
+    )
+    db.add(n)
+    db.flush()
+    return _ser_notification(n)
+
+
+def _push_order_alert(db: Session, order: Order, customer: Customer) -> Optional[Dict[str, Any]]:
+    """异常订单检测。
+
+    规则 A: 单笔金额 ≥ LARGE_ORDER_THRESHOLD
+    规则 B: 同客户在 RAPID_ORDER_WINDOW_MIN 内已下 ≥ RAPID_ORDER_COUNT 单 —— 开发期间停用
+    """
+    title = "异常订单"
+    content: Optional[str] = None
+
+    # 规则 A:单笔超大金额
+    if (order.total_amount or Decimal("0")) >= LARGE_ORDER_THRESHOLD:
+        content = (
+            f"订单 {order.order_no} 金额 ¥{float(order.total_amount):.2f},"
+            f"超过大额阈值 ¥{float(LARGE_ORDER_THRESHOLD):.0f}"
+        )
+
+    # ── 规则 B(开发期间停用):同客户高频下单 ──────────────────────────
+    # if not content:
+    #     window_start = _now() - timedelta(minutes=RAPID_ORDER_WINDOW_MIN)
+    #     cnt = (
+    #         db.query(Order)
+    #         .filter(Order.customer_id == customer.id, Order.created_at >= window_start)
+    #         .count()
+    #     )
+    #     if cnt >= RAPID_ORDER_COUNT:
+    #         content = (
+    #             f"客户 {customer.username} 在 {RAPID_ORDER_WINDOW_MIN}min 内下了 {cnt} 单,疑似刷单"
+    #         )
+    #         # 规则 B 防抖:同客户在过去 RAPID_ORDER_DEBOUNCE_MIN 分钟内已有相关 order_alert 就跳过
+    #         debounce_start = _now() - timedelta(minutes=RAPID_ORDER_DEBOUNCE_MIN)
+    #         recent = (
+    #             db.query(Notification)
+    #             .filter(
+    #                 Notification.type == NotificationTypeEnum.order_alert,
+    #                 Notification.content.like(f"%客户 {customer.username}%"),
+    #                 Notification.created_at >= debounce_start,
+    #             )
+    #             .first()
+    #         )
+    #         if recent:
+    #             content = None
+
+    if not content:
+        return None
+
+    n = Notification(
+        type=NotificationTypeEnum.order_alert,
+        title=title,
+        content=content,
+        is_read=False,
+        created_at=_now(),
+    )
+    db.add(n)
+    db.flush()
+    return _ser_notification(n)
+
+
+def _push_sales_alert(db: Session) -> Optional[Dict[str, Any]]:
+    """销售额波动检测:今日累计 vs 近 SALES_BASELINE_DAYS 天日均。
+
+    门控:只在每日 SALES_ALERT_CHECK_HOUR(默认 23 点)及以后的 tick 才扫,
+    避免日间订单频繁触发 + 回填模式下每个历史日期被多次刷屏。
+    再叠加"同日同方向 24h 内只发 1 条"的 content marker 去重。
+    """
+    now = _now()
+    if now.hour < SALES_ALERT_CHECK_HOUR:
+        return None
+
+    today = now.date()
+    today_start = datetime.combine(today, datetime.min.time())
+    today_end   = datetime.combine(today, datetime.max.time())
+    base_start  = datetime.combine(today - timedelta(days=SALES_BASELINE_DAYS), datetime.min.time())
+    base_end    = datetime.combine(today - timedelta(days=1), datetime.max.time())
+
+    paid_statuses = ["paid", "shipped", "completed"]
+
+    today_sum = (
+        db.query(func.coalesce(func.sum(Order.total_amount), 0))
+        .filter(
+            Order.created_at >= today_start,
+            Order.created_at <= today_end,
+            Order.status.in_(paid_statuses),
+        )
+        .scalar()
+    ) or 0
+    base_sum = (
+        db.query(func.coalesce(func.sum(Order.total_amount), 0))
+        .filter(
+            Order.created_at >= base_start,
+            Order.created_at <= base_end,
+            Order.status.in_(paid_statuses),
+        )
+        .scalar()
+    ) or 0
+
+    base_avg = Decimal(str(base_sum)) / Decimal(SALES_BASELINE_DAYS)
+    if base_avg <= 0:
+        return None  # 无基线数据,不报警
+
+    today_amt = Decimal(str(today_sum))
+    ratio = (today_amt - base_avg) / base_avg
+    if ratio <= -SALES_DEVIATION_RATIO:
+        direction = "偏低"
+    elif ratio >= SALES_DEVIATION_RATIO:
+        direction = "偏高"
+    else:
+        return None
+
+    # 防抖:今日同方向已发过就跳过(content 含 "YYYY-MM-DD·偏X" marker)
+    marker = f"{today.isoformat()}·{direction}"
+    if db.query(Notification).filter(
+        Notification.type == NotificationTypeEnum.sales_alert,
+        Notification.content.like(f"%{marker}%"),
+        Notification.created_at >= today_start,
+    ).first():
+        return None
+
+    n = Notification(
+        type=NotificationTypeEnum.sales_alert,
+        title="销售额波动",
+        content=(
+            f"{marker}: 今日累计 ¥{float(today_amt):.0f},"
+            f"较近 {SALES_BASELINE_DAYS} 日日均 ¥{float(base_avg):.0f} {direction} "
+            f"{abs(float(ratio) * 100):.0f}%"
+        ),
+        is_read=False,
+        created_at=_now(),
+    )
+    db.add(n)
+    db.flush()
+    return _ser_notification(n)
 
 
 # ─── Customer ──────────────────────────────────────────────────────────
@@ -623,6 +790,17 @@ def create_order(db, *, status=None, customer_id=None):
         if n:
             notifs.append(n)
 
+    # 异常订单检测(大额 / 同客户高频)
+    n_order = _push_order_alert(db, order, customer)
+    if n_order:
+        notifs.append(n_order)
+
+    # 销售额波动检测 — 仅当此单已实际计入销售额(paid+)时才扫
+    if order.status in (OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed):
+        n_sales = _push_sales_alert(db)
+        if n_sales:
+            notifs.append(n_sales)
+
     db.commit()
     db.refresh(order)
     return {"row": _ser_order(order), "finance": finance or None, "notifs": notifs}
@@ -632,13 +810,13 @@ def update_order(db, id, *, status=None):
     """订单状态变更。按状态机转移同步 finance_records。受 ALLOWED_ORDER_TRANSITIONS 状态机约束。
 
     finance 同步规则(新):
-      - pending → paid     : 写入 sales_income + product_cost + ad_cost
+      - pending → paid     : 写入 sales_income + product_cost + ad_cost,顺手扫 sales_alert
       - paid    → shipped  : 写入 logistics_cost
-      - paid    → refunded : 写入 refund_out 支出(保留原 sales_income 等,资金已收过)
+      - paid    → refunded : 写入 refund_out 支出(保留原 sales_income 等,资金已收过)+ 推 refund_alert
       - shipped → completed: 无新增(已就位)
 
     返回:
-      - {"row": ..., "finance_added": [...] | None, "finance_removed": int} 成功
+      - {"row": ..., "finance_added": [...] | None, "finance_removed": int, "notif": dict | None} 成功
       - None 订单不存在
       - "invalid_transition" 字符串 当前 status 不允许转到 new_status
     """
@@ -646,7 +824,7 @@ def update_order(db, id, *, status=None):
     if not o:
         return None
     if not status:
-        return {"row": _ser_order(o), "finance_added": None, "finance_removed": 0}
+        return {"row": _ser_order(o), "finance_added": None, "finance_removed": 0, "notif": None}
 
     new_status = OrderStatusEnum(status)
     # 状态机校验:只允许 ALLOWED_ORDER_TRANSITIONS 中预定义的路径;不变 status 直接放行
@@ -668,13 +846,17 @@ def update_order(db, id, *, status=None):
 
     finance_added: List[Dict[str, Any]] = []
     finance_removed = 0
+    notif: Optional[Dict[str, Any]] = None
 
     if old_status == OrderStatusEnum.pending and new_status == OrderStatusEnum.paid:
         finance_added.extend(_add_sale_finance(db, o))
+        # 销售额已实际入账,扫一次当日波动
+        notif = _push_sales_alert(db)
     elif old_status == OrderStatusEnum.paid and new_status == OrderStatusEnum.shipped:
         finance_added.extend(_add_logistics_finance(db, o))
     elif old_status == OrderStatusEnum.paid and new_status == OrderStatusEnum.refunded:
         finance_added.extend(_add_refund_finance(db, o))
+        notif = _push_refund_alert(db, o, o.total_amount or Decimal("0"))
 
     db.commit()
     db.refresh(o)
@@ -682,6 +864,7 @@ def update_order(db, id, *, status=None):
         "row": _ser_order(o),
         "finance_added": finance_added or None,
         "finance_removed": finance_removed,
+        "notif": notif,
     }
 
 
@@ -751,18 +934,7 @@ def create_refund(db, *, order_id=None, amount=None):
     db.add(r)
     db.flush()
 
-    notif = None
-    if amt >= Decimal("500"):
-        n = Notification(
-            type=NotificationTypeEnum.refund_alert,
-            title="大额退款",
-            content=f"订单 {order.order_no} 发生退款,金额 ¥{float(amt)}",
-            is_read=False,
-            created_at=now,
-        )
-        db.add(n)
-        db.flush()
-        notif = _ser_notification(n)
+    notif = _push_refund_alert(db, order, amt)
 
     db.commit()
     db.refresh(r)

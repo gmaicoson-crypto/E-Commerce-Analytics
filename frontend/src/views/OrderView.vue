@@ -56,13 +56,20 @@
         <EChartBox :option="trendOpt" :height="240" />
       </AppCard>
     </div>
-    <AppCard title="订单明细" subtitle="所有订单列表（每页20条）">
+    <AppCard title="订单明细" :subtitle="`所有订单列表 · 滚动加载`">
       <template #extra>
         <div class="filters">
+          <ThemedSelect v-model="selectedDate" :options="dateOpts" :min-width="160" />
           <button v-for="s in statusOpts" :key="s" class="fbtn" :class="{ active: filter === s }" @click="onFilter(s)">{{ s }}</button>
         </div>
       </template>
-      <DataTable :columns="cols" :data="(orders as Record<string,unknown>[])" :pagination="true" :page-size="20" />
+      <InfiniteTable
+        :columns="cols"
+        :loader="loadOrdersPage"
+        :reset-key="`${filter}|${selectedDate}`"
+        :page-size="50"
+        trigger-selector=".kpi-grid"
+      />
     </AppCard>
   </div>
 </template>
@@ -74,7 +81,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import KpiCard    from '@/components/common/KpiCard.vue'
 import AppCard    from '@/components/common/AppCard.vue'
 import EChartBox  from '@/components/common/EChartBox.vue'
-import DataTable  from '@/components/common/DataTable.vue'
+import InfiniteTable from '@/components/common/InfiniteTable.vue'
 import LegendItem from '@/components/common/LegendItem.vue'
 import { TOOLTIP_BASE, ORDER_STATUS_ZH, ORDER_STATUS_EN, fmtDateTime, recentDayLabels, AXIS_GRID, xName, yName, fmtMoneyCN } from '@/utils/constants'
 import type { TableColumn, OrderListItem } from '@/types'
@@ -82,6 +89,7 @@ import { api } from '@/services/api'
 import { useDebouncedReload } from '@/composables/useEventStream'
 import { useChartDetail } from '@/composables/useChartDetail'
 import AppIcon from '@/components/common/AppIcon.vue'
+import ThemedSelect from '@/components/common/ThemedSelect.vue'
 
 const COLOR_MAP: Record<string,string> = { '待支付':'#f59e0b','已支付':'#3b82f6','已发货':'#8b5cf6','已完成':'#52b788','已取消':'#9ca3af','已退款':'#ef4444' }
 const BADGE_BG: Record<string,string>  = { '待支付':'#fef9c3','已支付':'#dbeafe','已发货':'#ede9fe','已完成':'#dcfce7','已取消':'#f3f4f6','已退款':'#fee2e2' }
@@ -93,25 +101,37 @@ const filter = ref('全部')
 const overview   = ref<Record<string, number>>({})
 const statusDist = ref<{ name: string; count: number; pct: number }[]>([])
 const timeline   = ref<{ date: string; order_count: number }[]>([])
-const orders     = ref<Array<{ id: string; username: string; amount: number; status: string; time: string }>>([])
 
-async function loadOrders() {
+// 日期筛选(走服务端)
+const selectedDate = ref('all')
+const dateOpts = computed(() => {
+  const out: { label: string; value: string }[] = [{ label: '全部日期', value: 'all' }]
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(Date.now() - i * 86400 * 1000)
+    const iso = d.toISOString().slice(0, 10)
+    out.push({ label: i === 0 ? `今天 (${iso.slice(5)})` : iso.slice(5), value: iso })
+  }
+  return out
+})
+
+// 给 InfiniteTable 的 loader:按 status / date 服务端过滤,分页拉取
+async function loadOrdersPage(page: number, pageSize: number) {
   const status = filter.value === '全部' ? undefined : ORDER_STATUS_EN[filter.value]
-  // 拉满,前端分页(每页 20)。与「财务流水明细」同款做法。
-  const resp = await api.getOrdersList(1, 10000, status)
+  const date = selectedDate.value === 'all' ? undefined : selectedDate.value
+  const resp = await api.getOrdersList(page, pageSize, status, date)
   const list: OrderListItem[] = resp?.data ?? []
-  orders.value = list.map(o => ({
+  const data = list.map(o => ({
     id: o.order_no,
     username: o.customer,
     amount: o.total_amount,
     status: ORDER_STATUS_ZH[o.status] ?? o.status,
     time: fmtDateTime(o.created_at),
   }))
+  return { data: data as unknown as Record<string, unknown>[], total: resp?.pagination?.total ?? 0 }
 }
 
 function onFilter(s: string) {
   filter.value = s
-  loadOrders()
 }
 
 async function loadData() {
@@ -131,7 +151,6 @@ async function loadData() {
     }))
 
     timeline.value = tl?.data ?? []
-    await loadOrders()
   } catch (e) {
     console.error('[OrderView] load failed', e)
   }

@@ -35,8 +35,17 @@
         </div>
       </AppCard>
     </div>
-    <AppCard title="财务流水明细" subtitle="所有收支记录（每页20条）">
-      <DataTable :columns="cols" :data="(records as Record<string,unknown>[])" :pagination="true" :page-size="20" />
+    <AppCard title="财务流水明细" subtitle="所有收支记录 · 滚动加载">
+      <template #extra>
+        <ThemedSelect v-model="selectedDate" :options="dateOpts" :min-width="160" />
+      </template>
+      <InfiniteTable
+        :columns="cols"
+        :loader="loadRecordsPage"
+        :reset-key="selectedDate"
+        :page-size="50"
+        trigger-selector=".kpi-row"
+      />
     </AppCard>
   </div>
 </template>
@@ -49,7 +58,7 @@ import KpiCard    from '@/components/common/KpiCard.vue'
 import AppCard    from '@/components/common/AppCard.vue'
 import AppBadge   from '@/components/common/AppBadge.vue'
 import EChartBox  from '@/components/common/EChartBox.vue'
-import DataTable  from '@/components/common/DataTable.vue'
+import InfiniteTable from '@/components/common/InfiniteTable.vue'
 import LegendItem from '@/components/common/LegendItem.vue'
 import { TOOLTIP_BASE, FIN_TYPE_ZH, FIN_CATEGORY_ZH, fmtDateTime, AXIS_GRID, xName, yName, fmtMoneyCN } from '@/utils/constants'
 import type { TableColumn, FinanceRecord } from '@/types'
@@ -57,6 +66,7 @@ import { api } from '@/services/api'
 import { useDebouncedReload } from '@/composables/useEventStream'
 import { useChartDetail } from '@/composables/useChartDetail'
 import AppIcon from '@/components/common/AppIcon.vue'
+import ThemedSelect from '@/components/common/ThemedSelect.vue'
 
 const PAL_EXP = ['#52b788', '#74c69d', '#b7e4c7', '#40916c', '#95d5b2']
 
@@ -67,7 +77,34 @@ const grossMargin = computed(() => totalRev.value > 0 ? ((netProfit.value / tota
 
 const trendData = ref<{ date: string; income: number; expense: number }[]>([])
 const expBreakdown = ref<{ category: string; amount: number; percentage: number }[]>([])
-const records = ref<Array<{ id: number; type: string; category: string; amount: number; orderId: string; time: string }>>([])
+
+// 日期筛选(走服务端)
+const selectedDate = ref('all')
+const dateOpts = computed(() => {
+  const out: { label: string; value: string }[] = [{ label: '全部日期', value: 'all' }]
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(Date.now() - i * 86400 * 1000)
+    const iso = d.toISOString().slice(0, 10)
+    out.push({ label: i === 0 ? `今天 (${iso.slice(5)})` : iso.slice(5), value: iso })
+  }
+  return out
+})
+
+// 给 InfiniteTable 的 loader:按 date 服务端过滤,分页拉取
+async function loadRecordsPage(page: number, pageSize: number) {
+  const date = selectedDate.value === 'all' ? undefined : selectedDate.value
+  const resp = await api.getFinanceRecords(page, pageSize, undefined, undefined, date)
+  const list: FinanceRecord[] = resp?.data ?? []
+  const data = list.map(r => ({
+    id: r.id,
+    type: FIN_TYPE_ZH[r.type] ?? r.type,
+    category: FIN_CATEGORY_ZH[r.category] ?? r.category,
+    amount: r.amount,
+    orderId: r.order_no ?? '—',
+    time: fmtDateTime(r.recorded_at),
+  }))
+  return { data: data as unknown as Record<string, unknown>[], total: resp?.pagination?.total ?? 0 }
+}
 
 const expItems = computed(() =>
   expBreakdown.value.map((e, i) => ({
@@ -80,27 +117,17 @@ const expItems = computed(() =>
 
 async function loadData() {
   try {
-    const [kpi, trend, expense, recs] = await Promise.all([
+    const [kpi, trend, expense] = await Promise.all([
       api.getFinanceKPI('90'),
       api.getFinanceTrend(30),
       api.getExpenseBreakdown('90'),
-      api.getFinanceRecords(1, 10000),
     ])
 
     totalRev.value = kpi?.total_income ?? 0
     totalExp.value = kpi?.total_expense ?? 0
     trendData.value = trend?.data ?? []
     expBreakdown.value = expense?.data ?? []
-
-    const list: FinanceRecord[] = recs?.data ?? []
-    records.value = list.map(r => ({
-      id: r.id,
-      type: FIN_TYPE_ZH[r.type] ?? r.type,
-      category: FIN_CATEGORY_ZH[r.category] ?? r.category,
-      amount: r.amount,
-      orderId: r.order_no ?? '—',
-      time: fmtDateTime(r.recorded_at),
-    }))
+    // 财务流水明细的数据由 InfiniteTable 自己按需拉取,不在这里集中加载
   } catch (e) {
     console.error('[FinanceView] load failed', e)
   }

@@ -99,8 +99,8 @@ class ApiClient {
   getRefundAnalysis(dateRange = '30')               { return this.request<any>('GET', `/orders/refund-analysis${qs({ date_range: dateRange })}`) }
   getOrderTimeline(days = 30)                       { return this.request<any>('GET', `/orders/timeline${qs({ days })}`) }
   getLargeOrders(minAmount = 5000)                  { return this.request<any>('GET', `/orders/large-orders${qs({ min_amount: minAmount })}`) }
-  getOrdersList(page = 1, pageSize = 20, status?: string) {
-    return this.request<any>('GET', `/orders/list${qs({ page, page_size: pageSize, status })}`)
+  getOrdersList(page = 1, pageSize = 20, status?: string, date?: string) {
+    return this.request<any>('GET', `/orders/list${qs({ page, page_size: pageSize, status, date })}`)
   }
 
   // ─── Finance ──────────────────────────────────────────────────────────
@@ -110,8 +110,8 @@ class ApiClient {
   getFinanceTrend(days = 30)                        { return this.request<any>('GET', `/finance/trend${qs({ days })}`) }
   getExpenseBreakdown(dateRange = '30')             { return this.request<any>('GET', `/finance/expense-breakdown${qs({ date_range: dateRange })}`) }
   getCashFlow(dateRange = '30')                     { return this.request<any>('GET', `/finance/cash-flow${qs({ date_range: dateRange })}`) }
-  getFinanceRecords(page = 1, pageSize = 20, type?: string, category?: string) {
-    return this.request<any>('GET', `/finance/records${qs({ page, page_size: pageSize, type, category })}`)
+  getFinanceRecords(page = 1, pageSize = 20, type?: string, category?: string, date?: string) {
+    return this.request<any>('GET', `/finance/records${qs({ page, page_size: pageSize, type, category, date })}`)
   }
 
   // ─── Notifications ────────────────────────────────────────────────────

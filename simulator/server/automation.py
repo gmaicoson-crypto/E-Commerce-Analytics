@@ -13,7 +13,6 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, date, time, timedelta
 from typing import Optional, Dict
 
-from sqlalchemy import func as sa_func
 
 from database import SessionLocal
 import data_factory as df
@@ -108,24 +107,37 @@ class AutomationEngine:
     # ─── 异步循环 ───────────────────────────────────────────────────────
 
     async def _run_gen(self) -> None:
+        loop = asyncio.get_event_loop()
         try:
             while self.running:
+                if self.config.events_per_min <= 0:
+                    # 真·暂停生成(events=0 时不再每分钟跑 1 次"保底" tick)
+                    await asyncio.sleep(1.0)
+                    continue
+                target = 60.0 / self.config.events_per_min
+                t0 = loop.time()
                 await asyncio.to_thread(self._tick)
-                base = 60.0 / max(self.config.events_per_min, 1)
-                await asyncio.sleep(base * random.uniform(0.5, 1.5))
+                # 精确补眠:总周期 ≈ target,扣除 tick 实际耗时;±10% 抖动避免节拍齐刷
+                sleep_time = max(0.0, target - (loop.time() - t0)) * random.uniform(0.9, 1.1)
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
         except asyncio.CancelledError:
             pass
 
     async def _run_adv(self) -> None:
+        loop = asyncio.get_event_loop()
         try:
             while self.running:
                 if self.config.advances_per_min <= 0:
                     # 禁用推进:轻量轮询配置变化,避免 CPU 空转
                     await asyncio.sleep(1.0)
                     continue
+                target = 60.0 / self.config.advances_per_min
+                t0 = loop.time()
                 await asyncio.to_thread(self._advance_tick)
-                base = 60.0 / self.config.advances_per_min
-                await asyncio.sleep(base * random.uniform(0.5, 1.5))
+                sleep_time = max(0.0, target - (loop.time() - t0)) * random.uniform(0.9, 1.1)
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
         except asyncio.CancelledError:
             pass
 
@@ -213,17 +225,22 @@ class AutomationEngine:
 
     def _do_advance(self) -> None:
         with SessionLocal() as db:
-            # ORDER BY RAND() LIMIT 1 — 比 .all() + random.choice 高效
-            order = (
-                db.query(Order)
-                .filter(Order.status.in_([
-                    OrderStatusEnum.pending,
-                    OrderStatusEnum.paid,
-                    OrderStatusEnum.shipped,
-                ]))
-                .order_by(sa_func.rand())
-                .first()
-            )
+            # 取非终态订单 ID 列表(走 status 索引,只返回 PK 整数,极快)
+            # 然后 Python random.choice 选一个 + PK 精确查找。
+            # 比 ORDER BY RAND() 快一个数量级 —— RAND() 要给每行算随机数 + filesort,
+            # 在大表上单次 200-500ms,直接卡死 advances_per_min 配置速率。
+            candidate_ids = [
+                r[0] for r in db.query(Order.id).filter(
+                    Order.status.in_([
+                        OrderStatusEnum.pending,
+                        OrderStatusEnum.paid,
+                        OrderStatusEnum.shipped,
+                    ])
+                ).all()
+            ]
+            if not candidate_ids:
+                return
+            order = db.query(Order).filter(Order.id == random.choice(candidate_ids)).first()
             if not order:
                 return
             next_status = self._decide_next_status(order.status)
@@ -257,6 +274,8 @@ class AutomationEngine:
                     "order_id": order.id,
                     "removed": result["finance_removed"],
                 })
+            if result.get("notif"):
+                notify("notification", "create", result["notif"])
 
     def _decide_next_status(self, current) -> Optional[OrderStatusEnum]:
         cfg = self.config

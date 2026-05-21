@@ -259,6 +259,7 @@ async def finance_records(
     page_size: int = Query(20, ge=1, le=10000),
     type_filter: str = Query(None, alias="type"),
     category_filter: str = Query(None, alias="category"),
+    date_filter: str = Query(None, alias="date"),  # 'YYYY-MM-DD' 仅返回当日记录
     current_user=Depends(check_module_permission("finance_overview")),
     db: Session = Depends(get_db)
 ):
@@ -268,6 +269,14 @@ async def finance_records(
         query = query.filter(FinanceRecord.type == type_filter)
     if category_filter:
         query = query.filter(FinanceRecord.category == category_filter)
+    if date_filter:
+        try:
+            target = date.fromisoformat(date_filter)
+            s_dt = datetime.combine(target, datetime.min.time())
+            e_dt = datetime.combine(target, datetime.max.time())
+            query = query.filter(FinanceRecord.recorded_at >= s_dt, FinanceRecord.recorded_at <= e_dt)
+        except ValueError:
+            pass
 
     total = query.count()
     records = query.order_by(FinanceRecord.recorded_at.desc()).offset(
