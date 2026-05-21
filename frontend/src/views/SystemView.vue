@@ -8,13 +8,13 @@
     <div style="margin-top:16px">
       <!-- 员工管理 -->
       <template v-if="activeTab === 'employees'">
-        <div class="grid-emp">
+        <div :class="['grid-emp', { 'grid-emp-full': !showForm }]">
           <AppCard title="员工列表">
             <template #extra><AppBtn size="sm" icon="plus" @click="showForm = !showForm">新增员工</AppBtn></template>
-            <DataTable :columns="empCols" :data="(empList as Record<string,unknown>[])" />
+            <DataTable :columns="empCols" :data="(empList as Record<string,unknown>[])" :pagination="true" :page-size="5" />
           </AppCard>
-          <AppCard :title="showForm ? '新增员工' : '员工统计'">
-            <form v-if="showForm" class="emp-form" @submit.prevent="addEmployee">
+          <AppCard v-if="showForm" title="新增员工">
+            <form class="emp-form" @submit.prevent="addEmployee">
               <div v-for="f in formFields" :key="f.key" class="field">
                 <label class="flabel">{{ f.label }}</label>
                 <input v-model="newEmp[f.key]" :type="f.type || 'text'" :placeholder="f.ph" required class="finput" />
@@ -24,12 +24,6 @@
                 <AppBtn variant="ghost" style="flex:1" @click="showForm=false">取消</AppBtn>
               </div>
             </form>
-            <div v-else class="stats-list">
-              <div v-for="s in empStats" :key="s.label" class="stat-row">
-                <span class="stat-label">{{ s.label }}</span>
-                <span class="stat-value" :style="{ color: s.color }">{{ s.value }}</span>
-              </div>
-            </div>
           </AppCard>
         </div>
       </template>
@@ -37,13 +31,14 @@
       <!-- 权限分配 -->
       <template v-else-if="activeTab === 'permissions'">
         <div class="grid-perm">
-          <AppCard title="选择员工">
+          <AppCard title="选择员工" :subtitle="`共 ${empList.length} 人`">
             <div class="emp-list">
-              <button v-for="emp in empList" :key="emp.id" class="emp-item" :class="{ selected: selectedEmp?.id === emp.id }" @click="selectedEmp = emp">
+              <button v-for="emp in pagedEmpList" :key="emp.id" class="emp-item" :class="{ selected: selectedEmp?.id === emp.id }" @click="selectedEmp = emp">
                 <div class="emp-avatar">{{ emp.username[0] }}</div>
                 <div><div class="emp-name">{{ emp.username }}</div><div class="emp-email">{{ emp.email }}</div></div>
               </button>
             </div>
+            <Pagination v-if="empList.length > empPickerPageSize" :page="empPickerPage" :total="empList.length" :page-size="empPickerPageSize" @update:page="empPickerPage = $event" />
           </AppCard>
           <AppCard :title="selectedEmp ? `${selectedEmp.username} 的模块权限` : '请选择员工'" :subtitle="selectedEmp ? `共 ${selectedEmp.permissions.length} 个模块已开启` : ''">
             <div v-if="!selectedEmp" class="empty-hint">← 请从左侧选择一个员工</div>
@@ -64,8 +59,8 @@
 
       <!-- 权限日志 -->
       <template v-else>
-        <AppCard title="权限操作日志" subtitle="所有权限变更记录">
-          <DataTable :columns="logCols" :data="(logRows as Record<string,unknown>[])" />
+        <AppCard title="权限操作日志" :subtitle="`所有权限变更记录 · 共 ${filteredLogRows.length} 条`">
+          <DataTable :columns="logCols" :data="(filteredLogRows as Record<string,unknown>[])" :pagination="true" :page-size="20" />
         </AppCard>
       </template>
     </div>
@@ -79,6 +74,9 @@ import AppBadge   from '@/components/common/AppBadge.vue'
 import AppBtn     from '@/components/common/AppBtn.vue'
 import AppCard    from '@/components/common/AppCard.vue'
 import DataTable  from '@/components/common/DataTable.vue'
+import Pagination from '@/components/common/Pagination.vue'
+import ColumnFilter, { type ColumnFilterOption } from '@/components/common/ColumnFilter.vue'
+import ColumnTextFilter from '@/components/common/ColumnTextFilter.vue'
 import TabBar     from '@/components/common/TabBar.vue'
 import type { TableColumn, Employee, SystemModule, PermissionLog } from '@/types'
 import { api } from '@/services/api'
@@ -95,6 +93,14 @@ const errorMsg = ref<string | null>(null)
 
 const selectedEmp = ref<Employee | null>(null)
 const showForm = ref(false)
+
+// 权限分配 tab 的"选择员工"分页(8/页,与截图分页样式一致)
+const empPickerPage = ref(1)
+const empPickerPageSize = 6
+const pagedEmpList = computed(() => {
+  const start = (empPickerPage.value - 1) * empPickerPageSize
+  return empList.value.slice(start, start + empPickerPageSize)
+})
 const newEmp = ref<{ username: string; email: string; password: string }>({ username:'', email:'', password:'' })
 const formFields: { key: 'username' | 'email' | 'password'; label: string; type?: string; ph: string }[] = [
   { key:'username', label:'用户名', ph:'请输入用户名' },
@@ -168,27 +174,66 @@ async function togglePerm(empId: number, moduleKey: string) {
 
 // ─── 派生 ──────────────────────────────────────────────────────────────
 
-const empStats = computed(() => [
-  { label:'全部员工', value: empList.value.length, color:'var(--green)' },
-  { label:'已启用',   value: empList.value.filter(e => e.is_active).length, color:'#16a34a' },
-  { label:'已禁用',   value: empList.value.filter(e => !e.is_active).length, color:'#dc2626' },
-])
-
 const moduleNameByKey = computed(() => {
   const m: Record<string, string> = {}
   for (const mod of modules.value) m[mod.module_key] = mod.module_name
   return m
 })
 
-// 给"权限日志"表格用的展平行
+// 给"权限日志"表格用的展平行(已移除 remark 列)
 const logRows = computed(() => permLogs.value.map(l => ({
   admin: l.admin_username,
   employee: l.target_username,
   module: moduleNameByKey.value[l.module_key] ?? l.module_key,
   action: l.action === 'grant' ? '授权' : '撤销',
   time: fmtDateTime(l.changed_at),
-  remark: l.remark ?? '—',
 })))
+
+// ─── 权限日志表头过滤 ─────────────────────────────────────────────────
+// admin/employee:文本子串匹配(支持拼音段、英文段);其他三列:多选 checkbox
+const logFilters = ref<{ admin: string; employee: string; module: string[]; action: string[]; time: string[] }>({
+  admin: '',
+  employee: '',
+  module: [],
+  action: [],
+  time: [],
+})
+
+const logModuleOptions = computed<ColumnFilterOption[]>(() => {
+  const set = new Set<string>()
+  for (const r of logRows.value) set.add(r.module as string)
+  return Array.from(set).sort().map(v => ({ label: v, value: v }))
+})
+const logActionOptions: ColumnFilterOption[] = [
+  { label: '授权', value: '授权' },
+  { label: '撤销', value: '撤销' },
+]
+const logTimeOptions = computed<ColumnFilterOption[]>(() => {
+  // 用日期前缀(YYYY-MM-DD)做筛选项,label 显示 MM-DD
+  const set = new Set<string>()
+  for (const r of logRows.value) {
+    const t = ((r.time as string) || '').slice(0, 10)
+    if (t) set.add(t)
+  }
+  return Array.from(set).sort().reverse().map(v => ({ label: v.slice(5), value: v }))
+})
+
+const filteredLogRows = computed(() => {
+  const f = logFilters.value
+  const adminQ    = f.admin.trim().toLowerCase()
+  const employeeQ = f.employee.trim().toLowerCase()
+  return logRows.value.filter(r => {
+    if (adminQ    && !((r.admin    as string) || '').toLowerCase().includes(adminQ))    return false
+    if (employeeQ && !((r.employee as string) || '').toLowerCase().includes(employeeQ)) return false
+    if (f.module.length && !f.module.includes(r.module as string)) return false
+    if (f.action.length && !f.action.includes(r.action as string)) return false
+    if (f.time.length) {
+      const date = ((r.time as string) || '').slice(0, 10)
+      if (!f.time.includes(date)) return false
+    }
+    return true
+  })
+})
 
 // ─── 表格列 ────────────────────────────────────────────────────────────
 
@@ -198,37 +243,87 @@ const badge = (v: string, ok: string, ng: string) =>
 const empCols: TableColumn[] = [
   { key:'username', title:'用户名', render:v=>h('span',{style:{fontWeight:700}},v) },
   { key:'email',    title:'邮箱',   render:v=>h('span',{style:{fontSize:'12px',color:'var(--text2)'}},v) },
-  { key:'is_active',title:'状态',   render:v=>badge(v ? '启用' : '禁用','启用','禁用') },
+  { key:'is_active', title:'启用',  render:(_,row)=>{
+    const emp = row as unknown as Employee
+    return h('label',{style:{display:'inline-flex',alignItems:'center',gap:'6px',cursor:'pointer',userSelect:'none'}},[
+      h('input',{
+        type:'checkbox',
+        checked: emp.is_active,
+        style:{width:'16px',height:'16px',cursor:'pointer',accentColor:'var(--green)'},
+        onChange:()=>toggleStatus(emp),
+      }),
+      h('span',{style:{fontSize:'12px',fontWeight:700,color: emp.is_active?'var(--green-dark)':'var(--text3)'}}, emp.is_active?'启用':'禁用'),
+    ])
+  } },
   { key:'created_at', title:'创建时间', render:v=>h('span',{style:{fontSize:'12px',color:'var(--text3)'}}, fmtDateTime(v as string | null)) },
   { key:'_act',     title:'操作',   render:(_,row)=>{
     const emp = row as unknown as Employee
-    return h('div',{style:{display:'flex',gap:'6px'}},[
-      h('button',{style:{padding:'6px 12px',borderRadius:'6px',fontSize:'12px',fontWeight:700,background: emp.is_active?'#fee2e2':'var(--green-50)',color: emp.is_active?'#dc2626':'var(--green-dark)',border:'none',cursor:'pointer'},onClick:()=>toggleStatus(emp)}, emp.is_active?'禁用':'启用'),
-      h('button',{style:{padding:'6px 12px',borderRadius:'6px',fontSize:'12px',fontWeight:700,background:'var(--green-50)',color:'var(--green-dark)',border:'none',cursor:'pointer'},onClick:()=>{ selectedEmp.value = emp; activeTab.value='permissions' }},'权限'),
-    ])
+    return h('button',{style:{padding:'6px 12px',borderRadius:'6px',fontSize:'12px',fontWeight:700,background:'var(--green-50)',color:'var(--green-dark)',border:'none',cursor:'pointer'},onClick:()=>{ selectedEmp.value = emp; activeTab.value='permissions' }},'权限')
   } },
 ]
 const logCols: TableColumn[] = [
-  { key:'admin',    title:'操作管理员', render:v=>h('span',{style:{fontWeight:700,color:'var(--green-dark)'}}, v as string) },
-  { key:'employee', title:'被操作员工' },
-  { key:'module',   title:'涉及模块' },
-  { key:'action',   title:'操作类型', render:v=>badge(v as string,'授权','撤销') },
-  { key:'time',     title:'操作时间', render:v=>h('span',{style:{fontSize:'12px',color:'var(--text2)'}}, v as string) },
-  { key:'remark',   title:'备注', render:v=>h('span',{style:{fontSize:'12px',color:'var(--text3)'}}, v as string) },
+  {
+    key: 'admin',
+    title: '操作管理员',
+    render: v => h('span', { style: { fontWeight: 700, color: 'var(--green-dark)' } }, v as string),
+    headerRender: () => h(ColumnTextFilter, {
+      title: '操作管理员',
+      modelValue: logFilters.value.admin,
+      'onUpdate:modelValue': (v: string) => { logFilters.value.admin = v },
+    }),
+  },
+  {
+    key: 'employee',
+    title: '被操作员工',
+    headerRender: () => h(ColumnTextFilter, {
+      title: '被操作员工',
+      modelValue: logFilters.value.employee,
+      'onUpdate:modelValue': (v: string) => { logFilters.value.employee = v },
+    }),
+  },
+  {
+    key: 'module',
+    title: '涉及模块',
+    headerRender: () => h(ColumnFilter, {
+      title: '涉及模块',
+      options: logModuleOptions.value,
+      selected: logFilters.value.module,
+      'onUpdate:selected': (v: string[]) => { logFilters.value.module = v },
+    }),
+  },
+  {
+    key: 'action',
+    title: '操作类型',
+    render: v => badge(v as string, '授权', '撤销'),
+    headerRender: () => h(ColumnFilter, {
+      title: '操作类型',
+      options: logActionOptions,
+      selected: logFilters.value.action,
+      'onUpdate:selected': (v: string[]) => { logFilters.value.action = v },
+    }),
+  },
+  {
+    key: 'time',
+    title: '操作时间',
+    render: v => h('span', { style: { fontSize: '12px', color: 'var(--text2)' } }, v as string),
+    headerRender: () => h(ColumnFilter, {
+      title: '操作时间',
+      options: logTimeOptions.value,
+      selected: logFilters.value.time,
+      'onUpdate:selected': (v: string[]) => { logFilters.value.time = v },
+    }),
+  },
 ]
 </script>
 
 <style scoped>
 .grid-emp  { display:grid;grid-template-columns:1fr 320px;gap:16px; }
+.grid-emp-full { grid-template-columns:1fr; }   /* 无表单时员工列表占满整行 */
 .grid-perm { display:grid;grid-template-columns:260px 1fr;gap:16px; }
 .emp-form  { display:flex;flex-direction:column;gap:14px; }
 .field     { display:flex;flex-direction:column;gap:5px; }
 .flabel    { font-size:13px;font-weight:700;color:var(--text2); }
 .finput    { width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;font-family:inherit; }
-.stats-list{ display:flex;flex-direction:column;gap:12px; }
-.stat-row  { display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border); }
-.stat-label{ font-size:14px;color:var(--text2);font-weight:600; }
-.stat-value{ font-size:22px;font-weight:900; }
 .emp-list  { display:flex;flex-direction:column;gap:4px; }
 .emp-item  { display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:none;cursor:pointer;text-align:left;background:transparent;transition:background .15s;width:100%; }
 .emp-item:hover   { background:var(--green-50); }

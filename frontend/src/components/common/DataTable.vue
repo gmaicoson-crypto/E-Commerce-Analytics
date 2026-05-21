@@ -4,7 +4,10 @@
       <table class="dt">
         <thead>
           <tr>
-            <th v-for="col in columns" :key="col.key" :style="{ textAlign: col.align || 'left' }">{{ col.title }}</th>
+            <th v-for="col in columns" :key="col.key" :style="{ textAlign: col.align || 'left' }">
+              <component v-if="col.headerRender" :is="{ render: () => col.headerRender!() }" />
+              <span v-else>{{ col.title }}</span>
+            </th>
           </tr>
         </thead>
         <tbody>

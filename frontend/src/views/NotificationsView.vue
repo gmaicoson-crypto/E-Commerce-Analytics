@@ -11,11 +11,28 @@
         {{ t }}
         <span v-if="unreadCount(t) > 0" class="count" :class="{ active: filter === t }">{{ unreadCount(t) }}</span>
       </button>
+      <div class="select-row" v-if="filtered.length > 0">
+        <label class="select-all">
+          <input type="checkbox" :checked="allSelected" :indeterminate.prop="someSelected && !allSelected" @change="toggleSelectAll" />
+          <span>全选当前</span>
+        </label>
+        <span v-if="selectedCount > 0" class="select-info">已选 {{ selectedCount }} 条</span>
+        <button v-if="selectedCount > 0" class="bulk-del-btn" @click="deleteSelected">删除选中 ({{ selectedCount }})</button>
+      </div>
     </div>
     <div class="notif-list">
       <div v-if="loading" class="empty-card">加载中...</div>
       <div v-else-if="filtered.length === 0" class="empty-card">暂无{{ filter === '全部' ? '' : filter }}通知</div>
-      <div v-for="n in filtered" :key="n.id" class="notif-item" :style="{ borderLeftColor: n.read ? 'var(--border)' : TC[n.type], opacity: n.read ? 0.75 : 1 }">
+      <div
+        v-for="n in filtered"
+        :key="n.id"
+        class="notif-item"
+        :class="{ selected: selected.has(n.id) }"
+        :style="{ borderLeftColor: n.read ? 'var(--border)' : TC[n.type], opacity: n.read ? 0.75 : 1 }"
+      >
+        <label class="notif-check">
+          <input type="checkbox" :checked="selected.has(n.id)" @change="toggleSelect(n.id)" />
+        </label>
         <div class="notif-icon" :style="{ background: TB[n.type] }">
           <AppIcon :name="TI[n.type]" :size="18" :color="TC[n.type]" />
         </div>
@@ -28,7 +45,12 @@
           <div class="notif-title">{{ n.title }}</div>
           <div class="notif-content">{{ n.content }}</div>
         </div>
-        <button v-if="!n.read" class="read-btn" @click="markRead(n.id)">标为已读</button>
+        <div class="notif-actions">
+          <button v-if="!n.read" class="read-btn" @click="markRead(n.id)">标为已读</button>
+          <button class="del-btn" title="删除" @click="deleteOne(n.id)">
+            <AppIcon name="close" :size="14" color="currentColor" />
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -60,6 +82,68 @@ const filtered = computed(() => filter.value === '全部' ? notifications.value 
 
 function unreadCount(t: string) {
   return t === '全部' ? unread.value : notifications.value.filter(n => n.type === t && !n.read).length
+}
+
+// 多选状态
+const selected = ref<Set<number>>(new Set())
+const selectedCount = computed(() => {
+  // 只统计当前筛选下的选中项,避免切换 tab 后看到误导计数
+  return filtered.value.reduce((acc, n) => acc + (selected.value.has(n.id) ? 1 : 0), 0)
+})
+const someSelected = computed(() => selectedCount.value > 0)
+const allSelected = computed(() => filtered.value.length > 0 && filtered.value.every(n => selected.value.has(n.id)))
+
+function toggleSelect(id: number) {
+  const next = new Set(selected.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selected.value = next
+}
+
+function toggleSelectAll() {
+  const next = new Set(selected.value)
+  if (allSelected.value) {
+    filtered.value.forEach(n => next.delete(n.id))
+  } else {
+    filtered.value.forEach(n => next.add(n.id))
+  }
+  selected.value = next
+}
+
+async function deleteOne(id: number) {
+  if (!confirm('确认删除该通知?')) return
+  const prev = notifications.value
+  notifications.value = notifications.value.filter(n => n.id !== id)
+  if (selected.value.has(id)) {
+    const next = new Set(selected.value); next.delete(id); selected.value = next
+  }
+  try {
+    await api.deleteNotification(id)
+    refreshUnread()
+  } catch (e) {
+    console.error('[NotificationsView] delete failed', e)
+    notifications.value = prev
+  }
+}
+
+async function deleteSelected() {
+  // 只删除当前筛选下选中的项(避免跨 tab 误删)
+  const ids = filtered.value.filter(n => selected.value.has(n.id)).map(n => n.id)
+  if (ids.length === 0) return
+  if (!confirm(`确认删除选中的 ${ids.length} 条通知?`)) return
+  const prev = notifications.value
+  const idSet = new Set(ids)
+  notifications.value = notifications.value.filter(n => !idSet.has(n.id))
+  const nextSel = new Set(selected.value)
+  ids.forEach(i => nextSel.delete(i))
+  selected.value = nextSel
+  try {
+    await api.deleteBatchNotifications(ids)
+    refreshUnread()
+  } catch (e) {
+    console.error('[NotificationsView] batch delete failed', e)
+    notifications.value = prev
+  }
 }
 
 async function load() {
@@ -114,14 +198,25 @@ useDebouncedReload(['notification'], load)
 </script>
 
 <style scoped>
-.filter-row { display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap; }
+.filter-row { display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center; }
 .type-btn   { padding:7px 16px;border-radius:99px;font-size:13px;font-weight:700;border:1.5px solid var(--border);background:white;color:var(--text2);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px; }
 .type-btn.active { background:var(--green);border-color:var(--green);color:#fff; }
 .count      { width:18px;height:18px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:900;display:inline-flex;align-items:center;justify-content:center; }
 .count.active { background:rgba(255,255,255,.35); }
+
+.select-row { display:flex;align-items:center;gap:12px;margin-left:auto; }
+.select-all { display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer; user-select:none; }
+.select-all input { width:15px;height:15px;cursor:pointer;accent-color:var(--green); }
+.select-info { font-size:12px;color:var(--text3);font-weight:600; }
+.bulk-del-btn { padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;background:#fee2e2;color:#dc2626;border:none;cursor:pointer;transition:all .15s; }
+.bulk-del-btn:hover { background:#fecaca; }
+
 .notif-list { display:flex;flex-direction:column;gap:10px; }
 .empty-card { padding:60px;text-align:center;color:var(--text3);background:var(--card);border-radius:var(--r);box-shadow:var(--shadow); }
 .notif-item { background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:16px 20px;display:flex;gap:14px;align-items:flex-start;border-left:4px solid var(--border);transition:all .2s; }
+.notif-item.selected { background:var(--green-50); }
+.notif-check { display:flex;align-items:center;padding-top:4px;cursor:pointer; }
+.notif-check input { width:16px;height:16px;cursor:pointer;accent-color:var(--green); }
 .notif-icon { width:40px;height:40px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
 .notif-body { flex:1;min-width:0; }
 .notif-meta { display:flex;align-items:center;gap:8px;margin-bottom:5px; }
@@ -130,6 +225,10 @@ useDebouncedReload(['notification'], load)
 .notif-time { font-size:12px;color:var(--text3);margin-left:auto; }
 .notif-title{ font-size:14px;font-weight:800;color:var(--text1);margin-bottom:4px; }
 .notif-content{ font-size:13px;color:var(--text2);line-height:1.6; }
-.read-btn   { flex-shrink:0;padding:6px 12px;border-radius:7px;font-size:12px;font-weight:700;background:var(--green-50);color:var(--green-dark);border:none;cursor:pointer;white-space:nowrap; }
+
+.notif-actions { display:flex;align-items:center;gap:6px;flex-shrink:0; }
+.read-btn   { padding:6px 12px;border-radius:7px;font-size:12px;font-weight:700;background:var(--green-50);color:var(--green-dark);border:none;cursor:pointer;white-space:nowrap; }
 .read-btn:hover { background:var(--green-100); }
+.del-btn    { width:28px;height:28px;border-radius:7px;border:none;background:transparent;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s; }
+.del-btn:hover { background:#fee2e2;color:#dc2626; }
 </style>

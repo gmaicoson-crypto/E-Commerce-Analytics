@@ -19,6 +19,8 @@ export interface TableColumn<T = Record<string, unknown>> {
   align?: 'left' | 'right' | 'center'
   wrap?: boolean
   render?: (value: unknown, row: T, index: number) => unknown
+  /** 自定义表头渲染(覆盖 title 文本显示);用于在表头放过滤器、复选框等 */
+  headerRender?: () => unknown
 }
 
 // Badge 颜色
