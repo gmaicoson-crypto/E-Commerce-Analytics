@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Enum as SQLEnum, ForeignKey, Text, DECIMAL, Index
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Enum as SQLEnum, ForeignKey, Text, DECIMAL, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum

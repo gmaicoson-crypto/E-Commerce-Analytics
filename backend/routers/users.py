@@ -6,8 +6,8 @@ from decimal import Decimal
 from typing import Optional
 from database import get_db
 from dependencies import check_module_permission
-from models import Customer, Order, Order
-from utils import success_response, parse_date_range, new_customer_threshold, customer_type_label
+from models import Customer, Order
+from utils import success_response, new_customer_threshold, customer_type_label
 
 router = APIRouter()
 

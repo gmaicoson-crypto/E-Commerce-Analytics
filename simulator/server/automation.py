@@ -23,7 +23,6 @@ class AutoConfig:
     pending_to_paid: float = 0.6
     pending_to_cancel: float = 0.1
     paid_to_shipped: float = 0.6
-    paid_to_refunded: float = 0.0
     shipped_to_completed: float = 0.8
     backfill_enabled: bool = False
     backfill_start_date: Optional[str] = None
@@ -64,7 +63,6 @@ class AutomationEngine:
         for key, value in overrides.items():
             if hasattr(self.config, key) and value is not None:
                 setattr(self.config, key, value)
-        self.config.paid_to_refunded = 0.0
         self.stats = AutoStats(started_at=datetime.utcnow().isoformat())
         self.running = True
         self._gen_task = asyncio.create_task(self._run_generation())
@@ -139,7 +137,7 @@ class AutomationEngine:
         candidates = []
         for status in ("pending", "paid", "shipped"):
             try:
-                data = df.list_orders(None, page=1, page_size=100, status=status)
+                data = df.list_orders(page=1, page_size=100, status=status)
                 candidates.extend(data.get("data") or [])
             except Exception as exc:
                 print(f"[automation] order list failed: {exc}")
@@ -153,7 +151,7 @@ class AutomationEngine:
             return
 
         try:
-            df.update_order(None, order["id"], status=next_status)
+            df.update_order(order["id"], status=next_status)
         except Exception as exc:
             print(f"[automation] order advance failed: {exc}")
             return

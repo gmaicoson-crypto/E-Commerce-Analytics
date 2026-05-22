@@ -1,6 +1,5 @@
 from datetime import datetime, date, timedelta
 from typing import Tuple, Optional, Any, Dict
-from decimal import Decimal
 
 
 # ─── 客户类型判定规则 ────────────────────────────────────────────────────
@@ -65,13 +64,6 @@ def get_prev_period(start: date, end: date) -> Tuple[date, date]:
     return prev_start, prev_end
 
 
-def calc_change_rate(current: float, previous: float) -> float:
-    """Calculate year-over-year change rate."""
-    if previous == 0:
-        return 0.0
-    return round((current - previous) / abs(previous) * 100, 2)
-
-
 def success_response(data: Any = None, message: str = "success") -> Dict[str, Any]:
     """Unified success response format."""
     return {
@@ -88,22 +80,3 @@ def error_response(message: str = "error", code: int = 400) -> Dict[str, Any]:
         "message": message,
         "data": None
     }
-
-
-def paginate(items: list, total: int, page: int, page_size: int) -> Dict[str, Any]:
-    """Format paginated response."""
-    return {
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "list": items
-    }
-
-
-def decimal_to_float(val) -> float:
-    """Convert Decimal to float, handle None."""
-    if val is None:
-        return 0.0
-    if isinstance(val, Decimal):
-        return float(val)
-    return float(val)

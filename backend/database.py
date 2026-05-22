@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
-import os
 
 class Settings(BaseSettings):
     database_url: str = Field(default="mysql+pymysql://root:password@localhost:3306/ecommerce_db", alias="DATABASE_URL")

@@ -5,9 +5,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
-import type { EChartsOption } from 'echarts'
+import type { ECBasicOption } from 'echarts/types/dist/shared'
 
-const props = withDefaults(defineProps<{ option: EChartsOption; height?: number }>(), { height: 240 })
+const props = withDefaults(defineProps<{ option: unknown; height?: number }>(), { height: 240 })
 
 const elRef = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
@@ -16,7 +16,7 @@ let ro: ResizeObserver | null = null
 function init() {
   if (!elRef.value) return
   chart = echarts.init(elRef.value)
-  chart.setOption(props.option)
+  chart.setOption(props.option as ECBasicOption)
 }
 
 function resize() { chart?.resize() }
@@ -38,7 +38,7 @@ onUnmounted(() => {
   ro = null
 })
 
-watch(() => props.option, (opt) => chart?.setOption(opt, true), { deep: true })
+watch(() => props.option, (opt) => chart?.setOption(opt as ECBasicOption, true), { deep: true })
 </script>
 
 <style scoped>

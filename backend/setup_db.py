@@ -1,15 +1,21 @@
 import pymysql
 import os
 from dotenv import load_dotenv
+from pathlib import Path
+from sqlalchemy.engine import make_url
 
-load_dotenv()
+ROOT = Path(__file__).resolve().parent.parent
+BACKEND_DIR = Path(__file__).resolve().parent
+SQL_PATH = ROOT / "database" / "sql" / "create_database.sql"
 
-# Direct configuration
-host = "127.0.0.1"
-port = 3306
-username = "root"
-password = "20041122"
-database = "ecommerce_db"
+load_dotenv(BACKEND_DIR / ".env")
+
+url = make_url(os.environ.get("DATABASE_URL", "mysql+pymysql://root:password@localhost:3306/ecommerce_db"))
+host = url.host or "127.0.0.1"
+port = url.port or 3306
+username = url.username or "root"
+password = url.password or ""
+database = url.database or "ecommerce_db"
 
 print(f"Creating database '{database}' on {host}:{port}...")
 
@@ -23,7 +29,8 @@ try:
     )
 
     with connection.cursor() as cursor:
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+        sql = SQL_PATH.read_text(encoding="utf-8").format(database=database.replace("`", "``"))
+        cursor.execute(sql)
         connection.commit()
         print(f"[OK] Database '{database}' created successfully")
 

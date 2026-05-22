@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from typing import Optional, Callable
+from typing import Callable
 from database import get_db
 from auth import decode_access_token
 from models import Admin, Employee, Module, EmployeeModulePermission

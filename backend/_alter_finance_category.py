@@ -1,23 +1,27 @@
-"""一次性脚本:扩展 finance_records.category ENUM,添加 'product_cost'。
+"""One-off migration: extend finance_records.category ENUM.
 
-新规则下,订单从 pending → paid 时会写入 product_cost FinanceRecord,
-所以 DB enum 必须先支持该值,否则插入会失败。
+SQL lives in database/sql/alter_finance_category_enum.sql so schema changes are
+maintained as standalone SQL instead of embedded Python strings.
 
-用法:python _alter_finance_category.py
+Usage:
+    cd backend
+    python _alter_finance_category.py
 """
+from pathlib import Path
+
 from sqlalchemy import text
+
 from database import engine
 
 
-NEW_ENUM = (
-    "ENUM('sales_income','product_cost','logistics_cost','ad_cost','refund_out')"
-)
+ROOT = Path(__file__).resolve().parent.parent
+SQL_PATH = ROOT / "database" / "sql" / "alter_finance_category_enum.sql"
 
 
 def main():
+    sql = SQL_PATH.read_text(encoding="utf-8")
     with engine.begin() as conn:
-        sql = f"ALTER TABLE finance_records MODIFY COLUMN category {NEW_ENUM} NOT NULL"
-        print(f"[alter] {sql}")
+        print(f"[alter] executing {SQL_PATH}")
         conn.execute(text(sql))
         print("[alter] done.")
 

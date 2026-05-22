@@ -241,8 +241,8 @@ const badge = (v: string, ok: string, ng: string) =>
   h('span',{style:{display:'inline-flex',alignItems:'center',padding:'2px 9px',borderRadius:'99px',fontSize:'12px',fontWeight:700,background:v===ok?'#dcfce7':v===ng?'#fee2e2':'#f1f5f0',color:v===ok?'#15803d':v===ng?'#dc2626':'#4b5563'}},v)
 
 const empCols: TableColumn[] = [
-  { key:'username', title:'用户名', render:v=>h('span',{style:{fontWeight:700}},v) },
-  { key:'email',    title:'邮箱',   render:v=>h('span',{style:{fontSize:'12px',color:'var(--text2)'}},v) },
+  { key:'username', title:'用户名', render:v=>h('span',{style:{fontWeight:700}},String(v)) },
+  { key:'email',    title:'邮箱',   render:v=>h('span',{style:{fontSize:'12px',color:'var(--text2)'}},String(v)) },
   { key:'is_active', title:'启用',  render:(_,row)=>{
     const emp = row as unknown as Employee
     return h('label',{style:{display:'inline-flex',alignItems:'center',gap:'6px',cursor:'pointer',userSelect:'none'}},[

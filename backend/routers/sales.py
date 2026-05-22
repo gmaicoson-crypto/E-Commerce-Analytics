@@ -5,9 +5,8 @@ from datetime import datetime, timedelta, date
 from decimal import Decimal
 from database import get_db
 from dependencies import check_module_permission
-from models import Order, OrderItem, Product, FinanceRecord, Customer
+from models import Order, OrderItem, Product
 from utils import success_response, parse_date_range, get_prev_period, customer_type_label
-from enum import Enum
 
 router = APIRouter()
 

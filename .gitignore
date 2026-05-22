@@ -24,6 +24,7 @@ out/
 
 # 日志
 *.log
+*.err
 npm-debug.log*
 
 # 临时文件

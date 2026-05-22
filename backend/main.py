@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import asyncio
 
 from database import engine, Base
 from routers import auth, system, sales, products, users, orders, finance, notifications, sse, notify, ingest

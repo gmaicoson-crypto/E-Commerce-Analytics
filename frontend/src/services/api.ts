@@ -30,7 +30,6 @@ class ApiClient {
 
   setToken(token: string) { this.token = token }
   clearToken() { this.token = null }
-  getToken() { return this.token }
 
   private async request<T = unknown>(method: string, endpoint: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -76,7 +75,6 @@ class ApiClient {
   getSalesOverview(dateRange = '30')                { return this.request<any>('GET', `/sales/overview${qs({ date_range: dateRange })}`) }
   getSalesTrend(days = 30)                          { return this.request<any>('GET', `/sales/trend${qs({ days })}`) }
   getSalesByCategory(dateRange = '30')              { return this.request<any>('GET', `/sales/by-category${qs({ date_range: dateRange })}`) }
-  getSalesByCustomerType(dateRange = '30')          { return this.request<any>('GET', `/sales/by-customer-type${qs({ date_range: dateRange })}`) }
   getTopProducts(limit = 10, dateRange = '30')      { return this.request<any>('GET', `/sales/top-products${qs({ limit, date_range: dateRange })}`) }
 
   // ─── Products ─────────────────────────────────────────────────────────
@@ -87,7 +85,6 @@ class ApiClient {
   getTopProductsTrend(days = 30, limit = 5)         { return this.request<any>('GET', `/products/top-trend${qs({ days, limit })}`) }
   getCategoryDailyTop(date: string, category: string, limit = 5) { return this.request<any>('GET', `/products/category-daily-top${qs({ date, category, limit })}`) }
   getProductHighlights(days = 7, limit = 8)         { return this.request<any>('GET', `/products/highlights${qs({ days, limit })}`) }
-  getProfitAnalysis(dateRange = '30')               { return this.request<any>('GET', `/products/profit-analysis${qs({ date_range: dateRange })}`) }
   getManagedProducts(page = 1, pageSize = 20,
                      filters: { category?: string; status?: string; keyword?: string } = {}) {
     return this.request<any>('GET', `/products/manage/list${qs({ page, page_size: pageSize, ...filters })}`)
@@ -112,8 +109,6 @@ class ApiClient {
   getUsersByProvince()                              { return this.request<any>('GET', '/users/by-province') }
   getUsersByGender()                                { return this.request<any>('GET', '/users/by-gender') }
   getUserGrowth(days = 30)                          { return this.request<any>('GET', `/users/growth${qs({ days })}`) }
-  getRFMAnalysis(dateRange = '30')                  { return this.request<any>('GET', `/users/rfm-analysis${qs({ date_range: dateRange })}`) }
-  getCohortAnalysis()                               { return this.request<any>('GET', '/users/cohort') }
   getCustomersList(page = 1, pageSize = 20,
                    filters: { gender?: string; age_group?: string; province?: string; customer_type?: string } = {}) {
     return this.request<any>('GET', `/users/customers/list${qs({ page, page_size: pageSize, ...filters })}`)
@@ -122,21 +117,15 @@ class ApiClient {
   // ─── Orders ───────────────────────────────────────────────────────────
   getOrdersOverview(dateRange = '30')               { return this.request<any>('GET', `/orders/overview${qs({ date_range: dateRange })}`) }
   getOrdersByStatus(dateRange = '30')               { return this.request<any>('GET', `/orders/by-status${qs({ date_range: dateRange })}`) }
-  getOrderFunnel(dateRange = '30')                  { return this.request<any>('GET', `/orders/funnel${qs({ date_range: dateRange })}`) }
-  getRefundAnalysis(dateRange = '30')               { return this.request<any>('GET', `/orders/refund-analysis${qs({ date_range: dateRange })}`) }
   getOrderTimeline(days = 30)                       { return this.request<any>('GET', `/orders/timeline${qs({ days })}`) }
-  getLargeOrders(minAmount = 5000)                  { return this.request<any>('GET', `/orders/large-orders${qs({ min_amount: minAmount })}`) }
   getOrdersList(page = 1, pageSize = 20, status?: string, date?: string) {
     return this.request<any>('GET', `/orders/list${qs({ page, page_size: pageSize, status, date })}`)
   }
 
   // ─── Finance ──────────────────────────────────────────────────────────
   getFinanceKPI(dateRange = '30')                   { return this.request<any>('GET', `/finance/kpi${qs({ date_range: dateRange })}`) }
-  getFinanceByCategory(dateRange = '30')            { return this.request<any>('GET', `/finance/by-category${qs({ date_range: dateRange })}`) }
-  getFinanceByType(dateRange = '30')                { return this.request<any>('GET', `/finance/by-type${qs({ date_range: dateRange })}`) }
   getFinanceTrend(days = 30)                        { return this.request<any>('GET', `/finance/trend${qs({ days })}`) }
   getExpenseBreakdown(dateRange = '30')             { return this.request<any>('GET', `/finance/expense-breakdown${qs({ date_range: dateRange })}`) }
-  getCashFlow(dateRange = '30')                     { return this.request<any>('GET', `/finance/cash-flow${qs({ date_range: dateRange })}`) }
   getFinanceRecords(page = 1, pageSize = 20, type?: string, category?: string, date?: string) {
     return this.request<any>('GET', `/finance/records${qs({ page, page_size: pageSize, type, category, date })}`)
   }
@@ -151,7 +140,6 @@ class ApiClient {
   markBatchAsRead(ids: number[])                    { return this.request<any>('PATCH',  '/notifications/batch/read', { notification_ids: ids }) }
   deleteNotification(id: number)                    { return this.request<any>('DELETE', `/notifications/${id}`) }
   deleteBatchNotifications(ids: number[])           { return this.request<any>('DELETE', '/notifications/batch', { notification_ids: ids }) }
-  getNotificationStats()                            { return this.request<any>('GET',    '/notifications/stats/by-type') }
 
   // ─── System (admin) ───────────────────────────────────────────────────
   getEmployees(page = 1, pageSize = 10)             { return this.request<any>('GET', `/system/employees${qs({ page, page_size: pageSize })}`) }

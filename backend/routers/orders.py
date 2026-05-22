@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, date
 from decimal import Decimal
 from database import get_db
 from dependencies import check_module_permission
-from models import Order, Refund, Customer
+from models import Order, Refund
 from utils import success_response, parse_date_range
 
 router = APIRouter()
