@@ -1,14 +1,182 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 from database import get_db
 from dependencies import check_module_permission, get_current_user
-from models import Product, Order, OrderItem, Order
+from event_bus import bus
+from models import CategoryEnum, Product, ProductStatusEnum, Order, OrderItem, Order
 from utils import success_response, parse_date_range
 
 router = APIRouter()
+
+
+class ProductCreate(BaseModel):
+    product_name: str = Field(min_length=1, max_length=100)
+    category: str
+    price: float = Field(ge=0)
+    cost: float = Field(ge=0)
+    stock: int = Field(ge=0)
+    low_stock_threshold: int = Field(default=10, ge=0)
+    status: str = "on_sale"
+
+
+class ProductUpdate(BaseModel):
+    product_name: str | None = Field(default=None, min_length=1, max_length=100)
+    category: str | None = None
+    price: float | None = Field(default=None, ge=0)
+    cost: float | None = Field(default=None, ge=0)
+    stock: int | None = Field(default=None, ge=0)
+    low_stock_threshold: int | None = Field(default=None, ge=0)
+    status: str | None = None
+
+
+def _enum_value(value):
+    return value.value if hasattr(value, "value") else value
+
+
+def _product_row(p: Product) -> dict:
+    return {
+        "id": p.id,
+        "product_name": p.product_name,
+        "category": _enum_value(p.category),
+        "price": float(p.price),
+        "cost": float(p.cost),
+        "stock": p.stock,
+        "low_stock_threshold": p.low_stock_threshold,
+        "status": _enum_value(p.status),
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+def _category(value: str) -> CategoryEnum:
+    try:
+        return CategoryEnum(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"message": f"Invalid category: {value}"})
+
+
+def _status(value: str) -> ProductStatusEnum:
+    try:
+        return ProductStatusEnum(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"message": f"Invalid status: {value}"})
+
+
+def _publish_product(action: str, payload: dict) -> None:
+    bus.publish("product", action, payload)
+
+
+@router.get("/manage/list", response_model=dict)
+async def product_manage_list(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    category: str | None = None,
+    status: str | None = None,
+    keyword: str | None = None,
+    current_user=Depends(check_module_permission("product_analysis")),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Product)
+    if category:
+        q = q.filter(Product.category == category)
+    if status:
+        q = q.filter(Product.status == status)
+    if keyword:
+        q = q.filter(Product.product_name.like(f"%{keyword.strip()}%"))
+    total = q.count()
+    rows = (
+        q.order_by(Product.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return success_response({
+        "data": [_product_row(p) for p in rows],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size if total else 0,
+        },
+    })
+
+
+@router.post("/manage", response_model=dict)
+async def product_manage_create(
+    body: ProductCreate,
+    current_user=Depends(check_module_permission("product_analysis")),
+    db: Session = Depends(get_db),
+):
+    product = Product(
+        product_name=body.product_name.strip(),
+        category=_category(body.category),
+        price=Decimal(str(body.price)).quantize(Decimal("0.01")),
+        cost=Decimal(str(body.cost)).quantize(Decimal("0.01")),
+        stock=body.stock,
+        low_stock_threshold=body.low_stock_threshold,
+        status=_status(body.status),
+        created_at=datetime.utcnow(),
+    )
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    row = _product_row(product)
+    _publish_product("create", row)
+    return success_response(row)
+
+
+@router.patch("/manage/{product_id}", response_model=dict)
+async def product_manage_update(
+    product_id: int,
+    body: ProductUpdate,
+    current_user=Depends(check_module_permission("product_analysis")),
+    db: Session = Depends(get_db),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail={"message": "Product not found"})
+
+    data = body.model_dump(exclude_unset=True)
+    if "product_name" in data and data["product_name"] is not None:
+        product.product_name = data["product_name"].strip()
+    if "category" in data and data["category"] is not None:
+        product.category = _category(data["category"])
+    if "status" in data and data["status"] is not None:
+        product.status = _status(data["status"])
+    if "price" in data and data["price"] is not None:
+        product.price = Decimal(str(data["price"])).quantize(Decimal("0.01"))
+    if "cost" in data and data["cost"] is not None:
+        product.cost = Decimal(str(data["cost"])).quantize(Decimal("0.01"))
+    for key in ("stock", "low_stock_threshold"):
+        if key in data and data[key] is not None:
+            setattr(product, key, data[key])
+
+    db.commit()
+    db.refresh(product)
+    row = _product_row(product)
+    _publish_product("update", row)
+    return success_response(row)
+
+
+@router.delete("/manage/{product_id}", response_model=dict)
+async def product_manage_delete(
+    product_id: int,
+    current_user=Depends(check_module_permission("product_analysis")),
+    db: Session = Depends(get_db),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail={"message": "Product not found"})
+    if db.query(OrderItem).filter(OrderItem.product_id == product_id).count() > 0:
+        raise HTTPException(status_code=400, detail={"message": "Product is used by orders"})
+    row = _product_row(product)
+    db.delete(product)
+    db.commit()
+    _publish_product("delete", row)
+    return success_response(row)
 
 
 @router.get("/overview", response_model=dict)

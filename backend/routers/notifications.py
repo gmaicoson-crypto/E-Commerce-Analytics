@@ -113,6 +113,38 @@ async def delete_batch(
     }, message="Notifications deleted")
 
 
+@router.get("/stats/by-type", response_model=dict)
+async def notification_stats_by_type(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get notification statistics by type."""
+    notifications = db.query(Notification).all()
+
+    type_stats = {}
+    for notif in notifications:
+        ntype = notif.type.value if notif.type else "Unknown"
+        if ntype not in type_stats:
+            type_stats[ntype] = {"total": 0, "read": 0, "unread": 0}
+        type_stats[ntype]["total"] += 1
+        if notif.is_read:
+            type_stats[ntype]["read"] += 1
+        else:
+            type_stats[ntype]["unread"] += 1
+
+    data = [
+        {
+            "type": ntype,
+            "total": stats["total"],
+            "read": stats["read"],
+            "unread": stats["unread"]
+        }
+        for ntype, stats in type_stats.items()
+    ]
+
+    return success_response(data)
+
+
 @router.get("/{notification_id}", response_model=dict)
 async def get_notification(
     notification_id: int,
@@ -191,35 +223,3 @@ async def delete_notification(
     return success_response({
         "id": notification_id
     }, message="Notification deleted")
-
-
-@router.get("/stats/by-type", response_model=dict)
-async def notification_stats_by_type(
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get notification statistics by type."""
-    notifications = db.query(Notification).all()
-
-    type_stats = {}
-    for notif in notifications:
-        ntype = notif.type.value if notif.type else "Unknown"
-        if ntype not in type_stats:
-            type_stats[ntype] = {"total": 0, "read": 0, "unread": 0}
-        type_stats[ntype]["total"] += 1
-        if notif.is_read:
-            type_stats[ntype]["read"] += 1
-        else:
-            type_stats[ntype]["unread"] += 1
-
-    data = [
-        {
-            "type": ntype,
-            "total": stats["total"],
-            "read": stats["read"],
-            "unread": stats["unread"]
-        }
-        for ntype, stats in type_stats.items()
-    ]
-
-    return success_response(data)

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     smtp_user: Optional[str] = Field(default=None, alias="SMTP_USER")
     smtp_pass: Optional[str] = Field(default=None, alias="SMTP_PASS")
     smtp_from: Optional[str] = Field(default=None, alias="SMTP_FROM")
+    simulator_api_token: Optional[str] = Field(default=None, alias="SIMULATOR_API_TOKEN")
 
     class Config:
         env_file = ".env"

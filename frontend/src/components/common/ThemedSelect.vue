@@ -84,7 +84,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMouseDown))
   border-radius: 8px;
   background: var(--card, #fff);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--text1, #111827);
   cursor: pointer;
   min-width: v-bind(triggerMinWidth);

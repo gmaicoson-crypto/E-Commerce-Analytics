@@ -24,7 +24,6 @@
         <div class="count-cell"><div class="label">客户</div><div class="value" id="cnt-customers">—</div></div>
         <div class="count-cell"><div class="label">商品</div><div class="value" id="cnt-products">—</div></div>
         <div class="count-cell"><div class="label">订单</div><div class="value" id="cnt-orders">—</div></div>
-        <div class="count-cell"><div class="label">退款</div><div class="value" id="cnt-refunds">—</div></div>
         <div class="count-cell"><div class="label">财务流水</div><div class="value" id="cnt-finance">—</div></div>
         <div class="count-cell"><div class="label">通知</div><div class="value" id="cnt-notifications">—</div></div>
       </div>
@@ -35,7 +34,6 @@
       <button class="tab active" data-tab="customer">客户</button>
       <button class="tab" data-tab="product">商品</button>
       <button class="tab" data-tab="order">订单</button>
-      <button class="tab" data-tab="refund">退款</button>
       <button class="tab" data-tab="finance">财务</button>
       <button class="tab" data-tab="notification">通知</button>
       <button class="tab" data-tab="automation">自动化</button>
@@ -110,10 +108,6 @@
           <div class="auto-tr-card-label">已支付 <span class="arr">→</span> 已发货</div>
           <div class="auto-tr-card-value"><input id="tr-ps" type="number" min="0" max="100" value="60" /><span class="suf">%</span></div>
         </label>
-        <label class="auto-tr-card auto-tr-card--refunded">
-          <div class="auto-tr-card-label">已支付 <span class="arr">→</span> 已退款</div>
-          <div class="auto-tr-card-value"><input id="tr-pr" type="number" min="0" max="100" value="5" /><span class="suf">%</span></div>
-        </label>
         <label class="auto-tr-card auto-tr-card--completed">
           <div class="auto-tr-card-label">已发货 <span class="arr">→</span> 已完成</div>
           <div class="auto-tr-card-value"><input id="tr-sc" type="number" min="0" max="100" value="80" /><span class="suf">%</span></div>
@@ -128,7 +122,6 @@
         <div class="auto-stat"><div class="lbl">推进→已支付</div><div class="val" id="auto-adv-paid">0</div></div>
         <div class="auto-stat"><div class="lbl">推进→已取消</div><div class="val" id="auto-adv-cancelled">0</div></div>
         <div class="auto-stat"><div class="lbl">推进→已发货</div><div class="val" id="auto-adv-shipped">0</div></div>
-        <div class="auto-stat"><div class="lbl">推进→已退款</div><div class="val" id="auto-adv-refunded">0</div></div>
         <div class="auto-stat"><div class="lbl">推进→已完成</div><div class="val" id="auto-adv-completed">0</div></div>
       </div>
 

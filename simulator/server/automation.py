@@ -1,72 +1,51 @@
-"""自动化模拟引擎 —— 单例后台 asyncio.Task。
+"""Automation engine for the simulator UI.
 
-挂在 simulator FastAPI app 上,由 /api/automation/start|stop|status 控制。
-
-新规则:
-- 「生成循环」按 events_per_min 创建客户 / pending 订单
-- 「推进循环」按 advances_per_min 随机挑非终态订单,按转移概率沿状态机推进
-- 两个循环各自独立 asyncio.Task,各有自己的速率
+The simulator behaves like an external commerce platform: it generates events
+and sends them to backend ingest APIs. It does not write the project database
+directly.
 """
+from __future__ import annotations
+
 import asyncio
 import random
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, date, time, timedelta
-from typing import Optional, Dict
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from typing import Optional
 
-
-from database import SessionLocal
 import data_factory as df
-from models import Order, OrderStatusEnum
-from notify_client import notify
 
 
 @dataclass
 class AutoConfig:
-    # ─── 生成循环 ───────────────────────────────────────────────────────
-    events_per_min: float = 60.0       # 默认 1 事件/秒
-    register_weight: float = 0.25      # 25% 注册 / 75% 下单
-    # 字段保留向后兼容,但新规则下 _tick_order 强制 status=pending,不再读此权重
-    order_status_weights: Dict[str, int] = field(default_factory=lambda: {
-        "pending": 100,
-    })
-
-    # ─── 推进循环(新)──────────────────────────────────────────────────
-    advances_per_min: float = 30.0     # 0 = 禁用推进
-    # 每个状态被本 tick 选中后的"出口概率",余下概率 = 保持不变
-    pending_to_paid:      float = 0.6
-    pending_to_cancel:    float = 0.1
-    paid_to_shipped:      float = 0.6
-    paid_to_refunded:     float = 0.05
+    events_per_min: float = 60.0
+    register_weight: float = 0.25
+    advances_per_min: float = 30.0
+    pending_to_paid: float = 0.6
+    pending_to_cancel: float = 0.1
+    paid_to_shipped: float = 0.6
+    paid_to_refunded: float = 0.0
     shipped_to_completed: float = 0.8
-
-    # ─── 回填模式(新)─────────────────────────────────────────────────
-    # 开启后,每次 tick 写入的所有时间戳(订单 created_at / 财务 recorded_at /
-    # 推进 paid_at completed_at 等)随机落在 [start, end] 区间内,用于补造
-    # 30 天趋势图所需的历史数据。关闭则按 datetime.utcnow() 实时写入。
-    backfill_enabled:    bool = False
-    backfill_start_date: Optional[str] = None  # ISO date 'YYYY-MM-DD'
-    backfill_end_date:   Optional[str] = None  # 同上
+    backfill_enabled: bool = False
+    backfill_start_date: Optional[str] = None
+    backfill_end_date: Optional[str] = None
 
 
 @dataclass
 class AutoStats:
     started_at: Optional[str] = None
-    # 生成
     registered: int = 0
     ordered: int = 0
-    skipped_no_product: int = 0    # create_order 因无 on_sale 商品被跳过
-    skipped_no_customer: int = 0   # create_order 因无客户被跳过
-    # 推进(新)
-    adv_paid:      int = 0
+    skipped_no_product: int = 0
+    skipped_no_customer: int = 0
+    adv_paid: int = 0
     adv_cancelled: int = 0
-    adv_shipped:   int = 0
-    adv_refunded:  int = 0
+    adv_shipped: int = 0
     adv_completed: int = 0
 
 
 class AutomationEngine:
     def __init__(self) -> None:
-        self.running: bool = False
+        self.running = False
         self.config = AutoConfig()
         self.stats = AutoStats()
         self._gen_task: Optional[asyncio.Task] = None
@@ -82,218 +61,131 @@ class AutomationEngine:
     def start(self, **overrides) -> dict:
         if self.running:
             return self.status()
-        for k, v in overrides.items():
-            if hasattr(self.config, k) and v is not None:
-                setattr(self.config, k, v)
+        for key, value in overrides.items():
+            if hasattr(self.config, key) and value is not None:
+                setattr(self.config, key, value)
+        self.config.paid_to_refunded = 0.0
         self.stats = AutoStats(started_at=datetime.utcnow().isoformat())
         self.running = True
-        self._gen_task = asyncio.create_task(self._run_gen())
-        self._adv_task = asyncio.create_task(self._run_adv())
+        self._gen_task = asyncio.create_task(self._run_generation())
+        self._adv_task = asyncio.create_task(self._run_advancement())
         return self.status()
 
     async def stop(self) -> dict:
         self.running = False
         for attr in ("_gen_task", "_adv_task"):
-            t = getattr(self, attr)
-            if t:
-                t.cancel()
+            task = getattr(self, attr)
+            if task:
+                task.cancel()
                 try:
-                    await t
+                    await task
                 except (asyncio.CancelledError, Exception):
                     pass
                 setattr(self, attr, None)
         return self.status()
 
-    # ─── 异步循环 ───────────────────────────────────────────────────────
-
-    async def _run_gen(self) -> None:
-        loop = asyncio.get_event_loop()
+    async def _run_generation(self) -> None:
         try:
             while self.running:
                 if self.config.events_per_min <= 0:
-                    # 真·暂停生成(events=0 时不再每分钟跑 1 次"保底" tick)
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(1)
                     continue
-                target = 60.0 / self.config.events_per_min
-                t0 = loop.time()
-                await asyncio.to_thread(self._tick)
-                # 精确补眠:总周期 ≈ target,扣除 tick 实际耗时;±10% 抖动避免节拍齐刷
-                sleep_time = max(0.0, target - (loop.time() - t0)) * random.uniform(0.9, 1.1)
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
+                started = asyncio.get_event_loop().time()
+                await asyncio.to_thread(self._generation_tick)
+                await self._sleep_for_rate(self.config.events_per_min, started)
         except asyncio.CancelledError:
             pass
 
-    async def _run_adv(self) -> None:
-        loop = asyncio.get_event_loop()
+    async def _run_advancement(self) -> None:
         try:
             while self.running:
                 if self.config.advances_per_min <= 0:
-                    # 禁用推进:轻量轮询配置变化,避免 CPU 空转
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(1)
                     continue
-                target = 60.0 / self.config.advances_per_min
-                t0 = loop.time()
-                await asyncio.to_thread(self._advance_tick)
-                sleep_time = max(0.0, target - (loop.time() - t0)) * random.uniform(0.9, 1.1)
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
+                started = asyncio.get_event_loop().time()
+                await asyncio.to_thread(self._advancement_tick)
+                await self._sleep_for_rate(self.config.advances_per_min, started)
         except asyncio.CancelledError:
             pass
 
-    # ─── 同步 tick(运行在 worker 线程) ─────────────────────────────────
+    async def _sleep_for_rate(self, per_minute: float, started: float) -> None:
+        target = 60.0 / per_minute
+        elapsed = asyncio.get_event_loop().time() - started
+        sleep_for = max(0.0, target - elapsed) * random.uniform(0.9, 1.1)
+        if sleep_for > 0:
+            await asyncio.sleep(sleep_for)
 
-    def _random_backfill_dt(self) -> Optional[datetime]:
-        """回填模式开启时返回区间内随机 datetime,否则返回 None。
-
-        关键:返回的随机时间会被 data_factory.set_clock_override 写入线程局部,
-        本 tick 内所有 datetime.utcnow → _now() 调用都用它,实现"历史日期补造数据"。
-        """
-        cfg = self.config
-        if not cfg.backfill_enabled or not cfg.backfill_start_date or not cfg.backfill_end_date:
-            return None
-        try:
-            s = date.fromisoformat(cfg.backfill_start_date)
-            e = date.fromisoformat(cfg.backfill_end_date)
-        except (TypeError, ValueError):
-            return None
-        if e < s:
-            s, e = e, s
-        span_days = (e - s).days
-        d = s + timedelta(days=random.randint(0, span_days))
-        # 当天随机时刻,避免所有事件凝在 00:00:00
-        return datetime.combine(d, time(
-            hour=random.randint(0, 23),
-            minute=random.randint(0, 59),
-            second=random.randint(0, 59),
-        ))
-
-    def _with_clock(self, fn) -> None:
-        """tick 前后管理 data_factory 的时钟覆盖,确保异常路径也清理。"""
-        df.set_clock_override(self._random_backfill_dt())
-        try:
-            fn()
-        finally:
-            df.set_clock_override(None)
-
-    def _tick(self) -> None:
-        def _do():
-            with SessionLocal() as db:
-                if random.random() < self.config.register_weight:
-                    self._tick_register(db)
-                else:
-                    self._tick_order(db)
-        self._with_clock(_do)
-
-    def _tick_register(self, db) -> None:
-        try:
-            info = df.create_customer(db)  # 全字段空 → 随机分布
-            self.stats.registered += 1
-            notify("customer", "create", info)
-        except Exception as e:
-            print(f"[automation] register error: {e}")
-
-    def _tick_order(self, db) -> None:
-        # 新规则:自动化只生成 pending 订单,后续状态由「推进循环」沿状态机演进
-        try:
-            result = df.create_order(db, status="pending")
-        except Exception as e:
-            print(f"[automation] order error: {e}")
-            return
-
-        if result is None:
-            # 区分一下跳过原因 — 引导用户去面板补数据
-            from models import Customer, Product, ProductStatusEnum
-            if db.query(Customer).count() == 0:
-                self.stats.skipped_no_customer += 1
-            elif db.query(Product).filter(Product.status == ProductStatusEnum.on_sale).count() == 0:
-                self.stats.skipped_no_product += 1
-            return
-
-        self.stats.ordered += 1
-        notify("order", "create", result["row"])
-        if result.get("finance"):
-            for f in result["finance"]:
-                notify("finance", "create", f)
-        for n in result.get("notifs") or []:
-            notify("notification", "create", n)
-
-    # ─── 推进 tick ──────────────────────────────────────────────────────
-
-    def _advance_tick(self) -> None:
-        self._with_clock(lambda: self._do_advance())
-
-    def _do_advance(self) -> None:
-        with SessionLocal() as db:
-            # 取非终态订单 ID 列表(走 status 索引,只返回 PK 整数,极快)
-            # 然后 Python random.choice 选一个 + PK 精确查找。
-            # 比 ORDER BY RAND() 快一个数量级 —— RAND() 要给每行算随机数 + filesort,
-            # 在大表上单次 200-500ms,直接卡死 advances_per_min 配置速率。
-            candidate_ids = [
-                r[0] for r in db.query(Order.id).filter(
-                    Order.status.in_([
-                        OrderStatusEnum.pending,
-                        OrderStatusEnum.paid,
-                        OrderStatusEnum.shipped,
-                    ])
-                ).all()
-            ]
-            if not candidate_ids:
-                return
-            order = db.query(Order).filter(Order.id == random.choice(candidate_ids)).first()
-            if not order:
-                return
-            next_status = self._decide_next_status(order.status)
-            if next_status is None:
-                return  # 本 tick 保持
+    def _generation_tick(self) -> None:
+        if random.random() < self.config.register_weight:
             try:
-                result = df.update_order(db, order.id, status=next_status.value)
-            except Exception as e:
-                print(f"[automation] advance error: {e}")
-                return
-            if not isinstance(result, dict):
-                return  # invalid_transition / None — 状态机防御
+                df.create_customer()
+                self.stats.registered += 1
+            except Exception as exc:
+                print(f"[automation] customer event failed: {exc}")
+            return
 
-            # 计数
-            attr_map = {
-                OrderStatusEnum.paid:      "adv_paid",
-                OrderStatusEnum.cancelled: "adv_cancelled",
-                OrderStatusEnum.shipped:   "adv_shipped",
-                OrderStatusEnum.refunded:  "adv_refunded",
-                OrderStatusEnum.completed: "adv_completed",
-            }
-            attr = attr_map[next_status]
+        try:
+            df.create_order(status="pending")
+            self.stats.ordered += 1
+        except Exception as exc:
+            print(f"[automation] order event failed: {exc}")
+            counts = self._safe_counts()
+            if counts.get("customers", 0) == 0:
+                self.stats.skipped_no_customer += 1
+            elif counts.get("products", 0) == 0:
+                self.stats.skipped_no_product += 1
+
+    def _advancement_tick(self) -> None:
+        candidates = []
+        for status in ("pending", "paid", "shipped"):
+            try:
+                data = df.list_orders(None, page=1, page_size=100, status=status)
+                candidates.extend(data.get("data") or [])
+            except Exception as exc:
+                print(f"[automation] order list failed: {exc}")
+                return
+        if not candidates:
+            return
+
+        order = random.choice(candidates)
+        next_status = self._decide_next_status(order.get("status"))
+        if not next_status:
+            return
+
+        try:
+            df.update_order(None, order["id"], status=next_status)
+        except Exception as exc:
+            print(f"[automation] order advance failed: {exc}")
+            return
+
+        attr = {
+            "paid": "adv_paid",
+            "cancelled": "adv_cancelled",
+            "shipped": "adv_shipped",
+            "completed": "adv_completed",
+        }.get(next_status)
+        if attr:
             setattr(self.stats, attr, getattr(self.stats, attr) + 1)
 
-            # SSE 通知 — 与 PATCH /api/order/{id} 同结构
-            notify("order", "update", result["row"])
-            for f in result.get("finance_added") or []:
-                notify("finance", "create", f)
-            if result.get("finance_removed"):
-                notify("finance", "delete", {
-                    "order_id": order.id,
-                    "removed": result["finance_removed"],
-                })
-            if result.get("notif"):
-                notify("notification", "create", result["notif"])
-
-    def _decide_next_status(self, current) -> Optional[OrderStatusEnum]:
-        cfg = self.config
-        r = random.random()
-        if current == OrderStatusEnum.pending:
-            if r < cfg.pending_to_paid:
-                return OrderStatusEnum.paid
-            if r < cfg.pending_to_paid + cfg.pending_to_cancel:
-                return OrderStatusEnum.cancelled
-        elif current == OrderStatusEnum.paid:
-            if r < cfg.paid_to_shipped:
-                return OrderStatusEnum.shipped
-            if r < cfg.paid_to_shipped + cfg.paid_to_refunded:
-                return OrderStatusEnum.refunded
-        elif current == OrderStatusEnum.shipped:
-            if r < cfg.shipped_to_completed:
-                return OrderStatusEnum.completed
+    def _decide_next_status(self, current: Optional[str]) -> Optional[str]:
+        roll = random.random()
+        if current == "pending":
+            if roll < self.config.pending_to_paid:
+                return "paid"
+            if roll < self.config.pending_to_paid + self.config.pending_to_cancel:
+                return "cancelled"
+        if current == "paid":
+            if roll < self.config.paid_to_shipped:
+                return "shipped"
+        if current == "shipped" and roll < self.config.shipped_to_completed:
+            return "completed"
         return None
+
+    def _safe_counts(self) -> dict:
+        try:
+            return df.get_counts()
+        except Exception:
+            return {}
 
 
 engine = AutomationEngine()

@@ -4,6 +4,9 @@ import type { Role } from '@/types'
 import { api } from '@/services/api'
 
 export const useAuthStore = defineStore('auth', () => {
+  const savedToken = localStorage.getItem('token')
+  if (savedToken) api.setToken(savedToken)
+
   const role        = ref<Role | null>(localStorage.getItem('role') as Role | null)
   const username    = ref<string | null>(localStorage.getItem('username'))
   const permissions = ref<string[]>(JSON.parse(localStorage.getItem('permissions') || '[]'))

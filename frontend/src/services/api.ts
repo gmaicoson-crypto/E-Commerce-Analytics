@@ -12,6 +12,7 @@ interface ApiResponse<T> {
 }
 
 type QueryValue = string | number | boolean | undefined | null
+type ApiErrorPayload = { message?: string; detail?: string | { message?: string } | Array<{ msg?: string }> }
 
 /** 把 `{a:1, b:undefined, c:'x'}` 编码为 `'a=1&c=x'`(忽略 null/undefined)。 */
 function qs(params: Record<string, QueryValue>): string {
@@ -42,8 +43,13 @@ class ApiClient {
     })
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.message || `HTTP ${res.status}`)
+      const err: ApiErrorPayload = await res.json().catch(() => ({}))
+      const detail = Array.isArray(err.detail)
+        ? err.detail.map(e => e.msg).filter(Boolean).join('; ')
+        : typeof err.detail === 'object'
+          ? err.detail?.message
+          : err.detail
+      throw new Error(err.message || detail || `HTTP ${res.status}`)
     }
 
     const json: ApiResponse<T> = await res.json()
@@ -82,6 +88,23 @@ class ApiClient {
   getCategoryDailyTop(date: string, category: string, limit = 5) { return this.request<any>('GET', `/products/category-daily-top${qs({ date, category, limit })}`) }
   getProductHighlights(days = 7, limit = 8)         { return this.request<any>('GET', `/products/highlights${qs({ days, limit })}`) }
   getProfitAnalysis(dateRange = '30')               { return this.request<any>('GET', `/products/profit-analysis${qs({ date_range: dateRange })}`) }
+  getManagedProducts(page = 1, pageSize = 20,
+                     filters: { category?: string; status?: string; keyword?: string } = {}) {
+    return this.request<any>('GET', `/products/manage/list${qs({ page, page_size: pageSize, ...filters })}`)
+  }
+  createManagedProduct(payload: {
+    product_name: string; category: string; price: number; cost: number; stock: number;
+    low_stock_threshold: number; status: string;
+  }) {
+    return this.request<any>('POST', '/products/manage', payload)
+  }
+  updateManagedProduct(id: number, payload: Partial<{
+    product_name: string; category: string; price: number; cost: number; stock: number;
+    low_stock_threshold: number; status: string;
+  }>) {
+    return this.request<any>('PATCH', `/products/manage/${id}`, payload)
+  }
+  deleteManagedProduct(id: number)                  { return this.request<any>('DELETE', `/products/manage/${id}`) }
 
   // ─── Users / Customers ────────────────────────────────────────────────
   getUsersOverview()                                { return this.request<any>('GET', '/users/overview') }

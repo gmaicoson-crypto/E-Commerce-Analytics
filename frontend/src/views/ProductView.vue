@@ -9,6 +9,28 @@
       <KpiCard title="总库存价值" :value="fmtMoneyCN(overviewKpi.total_inventory_value, { prefix: '' })" prefix="¥" icon="finance" icon-bg="#ede9fe" />
     </div>
 
+    <AppCard title="商品管理" subtitle="维护商品基础信息、价格、库存和上下架状态" class="mb16">
+      <template #extra>
+        <div class="manage-actions">
+          <button class="mg-btn ghost" @click="loadManagedProducts()">刷新</button>
+          <button class="mg-btn primary" @click="openProductModal()">新增商品</button>
+        </div>
+      </template>
+      <div class="manage-toolbar">
+        <input v-model.trim="productFilters.keyword" class="mg-input" placeholder="搜索商品名称" @keyup.enter="loadManagedProducts(1)" />
+        <ThemedSelect v-model="productFilters.category" :options="productCategoryFilterOpts" :min-width="120" @change="loadManagedProducts(1)" />
+        <ThemedSelect v-model="productFilters.status" :options="productStatusFilterOpts" :min-width="120" @change="loadManagedProducts(1)" />
+        <button class="mg-btn ghost" @click="resetProductFilters">重置</button>
+      </div>
+      <DataTable :columns="managedProductCols" :data="(managedProducts as unknown as Record<string,unknown>[])" empty-text="暂无商品" />
+      <div class="manage-pager">
+        <span>共 {{ productPage.total }} 条 · 第 {{ productPage.page }} / {{ Math.max(productPage.total_pages, 1) }} 页</span>
+        <button class="mg-btn ghost" :disabled="productPage.page <= 1" @click="loadManagedProducts(productPage.page - 1)">上一页</button>
+        <button class="mg-btn ghost" :disabled="productPage.page >= productPage.total_pages" @click="loadManagedProducts(productPage.page + 1)">下一页</button>
+      </div>
+      <p v-if="productManageError" class="manage-error">{{ productManageError }}</p>
+    </AppCard>
+
     <div class="grid-equal-2 mb16">
       <AppCard title="品类销量占比" class="equal-card">
         <template #extra>
@@ -61,6 +83,29 @@
       </template>
       <DataTable :columns="listCols" :data="(productList as Record<string,unknown>[])" />
     </AppCard>
+
+    <div v-if="productModalOpen" class="modal-mask" @click.self="closeProductModal">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3>{{ editingProduct ? '编辑商品' : '新增商品' }}</h3>
+          <button class="modal-x" @click="closeProductModal">×</button>
+        </div>
+        <div class="modal-body">
+          <label>商品名称<input v-model.trim="productForm.product_name" /></label>
+          <label>品类<ThemedSelect v-model="productForm.category" :options="productCategoryEditOpts" min-width="100%" /></label>
+          <label>状态<ThemedSelect v-model="productForm.status" :options="productStatusEditOpts" min-width="100%" /></label>
+          <label>价格<input v-model.number="productForm.price" type="number" min="0" step="0.01" /></label>
+          <label>成本<input v-model.number="productForm.cost" type="number" min="0" step="0.01" /></label>
+          <label>库存<input v-model.number="productForm.stock" type="number" min="0" step="1" /></label>
+          <label>预警阈值<input v-model.number="productForm.low_stock_threshold" type="number" min="0" step="1" /></label>
+          <p v-if="productFormError" class="manage-error">{{ productFormError }}</p>
+        </div>
+        <div class="modal-foot">
+          <button class="mg-btn ghost" @click="closeProductModal">取消</button>
+          <button class="mg-btn primary" :disabled="productSaving" @click="saveProduct">{{ productSaving ? '保存中' : '保存' }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -112,6 +157,223 @@ const selectedProductTrend = computed(() => {
 // 「品类每日 TOP5」筛选 + 数据
 const CATEGORIES = ['服装', '电子', '食品', '家居', '美妆'] as const
 const categoryOpts = CATEGORIES.map(c => ({ label: c, value: c }))
+const productCategoryFilterOpts = [{ label: '全部品类', value: '' }, ...CATEGORIES.map(c => ({ label: c, value: c }))]
+const productCategoryEditOpts = CATEGORIES.map(c => ({ label: c, value: c }))
+const productStatusFilterOpts = [
+  { label: '全部状态', value: '' },
+  { label: '在售', value: 'on_sale' },
+  { label: '下架', value: 'off_sale' },
+]
+const productStatusEditOpts = [
+  { label: '在售', value: 'on_sale' },
+  { label: '下架', value: 'off_sale' },
+]
+
+interface ManagedProduct {
+  id: number
+  product_name: string
+  category: string
+  price: number
+  cost: number
+  stock: number
+  low_stock_threshold: number
+  status: string
+  created_at?: string | null
+}
+
+interface ProductForm {
+  product_name: string
+  category: string
+  price: number
+  cost: number
+  stock: number
+  low_stock_threshold: number
+  status: string
+}
+
+const managedProducts = ref<ManagedProduct[]>([])
+const productFilters = ref({ keyword: '', category: '', status: '' })
+const productPage = ref({ page: 1, page_size: 10, total: 0, total_pages: 0 })
+const productManageError = ref('')
+const productModalOpen = ref(false)
+const productSaving = ref(false)
+const productFormError = ref('')
+const editingProduct = ref<ManagedProduct | null>(null)
+const productForm = ref<ProductForm>({
+  product_name: '',
+  category: CATEGORIES[0],
+  price: 99,
+  cost: 50,
+  stock: 100,
+  low_stock_threshold: 10,
+  status: 'on_sale',
+})
+
+const productFieldLabels: Record<keyof ProductForm, string> = {
+  product_name: '商品名称',
+  category: '品类',
+  price: '价格',
+  cost: '成本',
+  stock: '库存',
+  low_stock_threshold: '预警阈值',
+  status: '状态',
+}
+
+function productStatusLabel(value: string) {
+  return value === 'on_sale' ? '在售' : value === 'off_sale' ? '下架' : value
+}
+
+function productErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback
+  if (message.includes('Product is used by orders')) return '该商品已被订单引用，无法删除'
+  if (message.includes('Product not found')) return '商品不存在'
+  if (message.includes('Invalid category')) return '品类无效'
+  if (message.includes('Invalid status')) return '状态无效'
+  return message || fallback
+}
+
+async function loadManagedProducts(page = productPage.value.page) {
+  productManageError.value = ''
+  try {
+    const result = await api.getManagedProducts(page, productPage.value.page_size, {
+      keyword: productFilters.value.keyword || undefined,
+      category: productFilters.value.category || undefined,
+      status: productFilters.value.status || undefined,
+    })
+    managedProducts.value = result?.data ?? []
+    productPage.value = result?.pagination ?? { page, page_size: productPage.value.page_size, total: 0, total_pages: 0 }
+  } catch (e) {
+    productManageError.value = productErrorMessage(e, '加载商品失败')
+    managedProducts.value = []
+  }
+}
+
+function resetProductFilters() {
+  productFilters.value = { keyword: '', category: '', status: '' }
+  loadManagedProducts(1)
+}
+
+function openProductModal(row?: ManagedProduct) {
+  editingProduct.value = row ?? null
+  productFormError.value = ''
+  productForm.value = row
+    ? {
+        product_name: row.product_name,
+        category: row.category,
+        price: row.price,
+        cost: row.cost,
+        stock: row.stock,
+        low_stock_threshold: row.low_stock_threshold,
+        status: row.status,
+      }
+    : {
+        product_name: '',
+        category: CATEGORIES[0],
+        price: 99,
+        cost: 50,
+        stock: 100,
+        low_stock_threshold: 10,
+        status: 'on_sale',
+      }
+  productModalOpen.value = true
+}
+
+function closeProductModal() {
+  productModalOpen.value = false
+  editingProduct.value = null
+  productFormError.value = ''
+}
+
+function validateProductForm() {
+  const form = productForm.value
+  if (!form.product_name.trim()) return '请输入商品名称'
+  if (!form.category) return '请选择品类'
+  if (!form.status) return '请选择状态'
+  for (const key of ['price', 'cost', 'stock', 'low_stock_threshold'] as const) {
+    if (!Number.isFinite(Number(form[key])) || Number(form[key]) < 0) return `${productFieldLabels[key]}必须是非负数`
+  }
+  return ''
+}
+
+async function saveProduct() {
+  const err = validateProductForm()
+  if (err) {
+    productFormError.value = err
+    return
+  }
+  productSaving.value = true
+  productFormError.value = ''
+  const wasEditing = Boolean(editingProduct.value)
+  try {
+    if (editingProduct.value) {
+      await api.updateManagedProduct(editingProduct.value.id, productForm.value)
+    } else {
+      await api.createManagedProduct(productForm.value)
+    }
+    closeProductModal()
+    await Promise.all([loadManagedProducts(wasEditing ? productPage.value.page : 1), loadData(), loadDailyTop()])
+  } catch (e) {
+    productFormError.value = productErrorMessage(e, '保存商品失败')
+  } finally {
+    productSaving.value = false
+  }
+}
+
+async function deleteManagedProduct(row: ManagedProduct) {
+  if (!window.confirm(`确定删除商品「${row.product_name}」吗？`)) return
+  productManageError.value = ''
+  try {
+    await api.deleteManagedProduct(row.id)
+    await Promise.all([loadManagedProducts(productPage.value.page), loadData(), loadDailyTop()])
+  } catch (e) {
+    productManageError.value = productErrorMessage(e, '删除商品失败')
+  }
+}
+
+const managedProductCols: TableColumn<ManagedProduct>[] = [
+  { key: 'product_name', title: '商品名称', wrap: true },
+  { key: 'category', title: '品类' },
+  { key: 'price', title: '价格', align: 'right', render: v => fmtMoneyCN(v as number) },
+  { key: 'cost', title: '成本', align: 'right', render: v => fmtMoneyCN(v as number) },
+  { key: 'stock', title: '库存', align: 'right' },
+  { key: 'low_stock_threshold', title: '预警阈值', align: 'right' },
+  { key: 'status', title: '状态', render: v => badge(productStatusLabel(v as string), '在售', '下架') },
+  {
+    key: 'actions',
+    title: '操作',
+    align: 'center',
+    render: (_, row) => h('div', { style: { display: 'flex', justifyContent: 'center', gap: '8px', whiteSpace: 'nowrap' } }, [
+      h('button', {
+        style: {
+          height: '28px',
+          padding: '0 9px',
+          borderRadius: '7px',
+          border: '1px solid var(--border)',
+          background: '#fff',
+          color: 'var(--text2)',
+          fontSize: '12px',
+          fontWeight: 800,
+          cursor: 'pointer',
+        },
+        onClick: () => openProductModal(row as ManagedProduct),
+      }, '编辑'),
+      h('button', {
+        style: {
+          height: '28px',
+          padding: '0 9px',
+          borderRadius: '7px',
+          border: '1px solid #fecdd3',
+          background: '#fff1f2',
+          color: '#dc2626',
+          fontSize: '12px',
+          fontWeight: 800,
+          cursor: 'pointer',
+        },
+        onClick: () => deleteManagedProduct(row as ManagedProduct),
+      }, '删除'),
+    ]),
+  },
+]
 const todayISO = new Date().toISOString().slice(0, 10)
 const dailyTopDate = ref(todayISO)
 const dailyTopCategory = ref<string>(CATEGORIES[0])
@@ -199,8 +461,8 @@ async function loadData() {
   }
 }
 
-onMounted(() => { loadData(); loadDailyTop() })
-useDebouncedReload(['product', 'order'], () => { loadData(); loadDailyTop() })
+onMounted(() => { loadData(); loadDailyTop(); loadManagedProducts(1) })
+useDebouncedReload(['product', 'order'], () => { loadData(); loadDailyTop(); loadManagedProducts(productPage.value.page) })
 
 const { open } = useChartDetail()
 
@@ -365,4 +627,33 @@ const catOpt = computed<EChartsOption>(() => ({
 .legend-list                  { margin-top:14px; display:grid; grid-template-columns:repeat(2, 1fr); gap:6px 18px; }
 .scroll-body                  { flex:1; max-height:440px; overflow-y:auto; }
 .cat-daily-filters            { display:flex; gap:8px; align-items:center; }
+.manage-actions,
+.manage-toolbar,
+.manage-pager,
+.row-actions                  { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.manage-toolbar               { margin-bottom:12px; }
+.manage-pager                 { justify-content:flex-end; margin-top:12px; color:var(--text2); font-size:13px; }
+.mg-input                     { height:34px; min-width:200px; border:1px solid var(--border); border-radius:7px; padding:0 10px; color:var(--text1); background:#fff; }
+.mg-input:focus               { outline:none; border-color:var(--green); box-shadow:0 0 0 3px var(--green-50); }
+.mg-btn                       { height:32px; padding:0 12px; border-radius:7px; border:1px solid var(--border); font-size:12px; font-weight:800; cursor:pointer; background:#fff; color:var(--text2); display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; }
+.mg-btn.small                 { height:28px; padding:0 9px; }
+.mg-btn.primary               { background:var(--green); border-color:var(--green); color:#fff; }
+.mg-btn.ghost:hover           { background:var(--green-50); color:var(--green-dark); }
+.mg-btn.danger                { background:#fff1f2; border-color:#fecdd3; color:#dc2626; }
+.mg-btn.danger:hover          { background:#fee2e2; }
+.mg-btn:disabled              { opacity:.5; cursor:not-allowed; }
+.manage-error                 { margin:10px 0 0; color:#dc2626; font-size:13px; font-weight:700; }
+.modal-mask                   { position:fixed; inset:0; z-index:240; background:rgba(17,24,39,.45); display:flex; align-items:center; justify-content:center; padding:20px; }
+.modal-card                   { width:460px; max-width:100%; background:#fff; border-radius:8px; box-shadow:0 18px 56px rgba(0,0,0,.22); overflow:hidden; }
+.modal-head,
+.modal-foot                   { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border); }
+.modal-foot                   { justify-content:flex-end; border-top:1px solid var(--border); border-bottom:none; }
+.modal-head h3                { margin:0; font-size:16px; color:var(--text1); }
+.modal-x                      { border:none; background:transparent; font-size:22px; line-height:1; color:var(--text3); cursor:pointer; }
+.modal-body                   { padding:16px 18px; display:grid; gap:10px; }
+.modal-body label             { display:grid; grid-template-columns:96px 1fr; align-items:center; gap:10px; font-size:13px; font-weight:700; color:var(--text2); }
+.modal-body input,
+.modal-body select            { height:34px; border:1px solid var(--border); border-radius:7px; padding:0 10px; color:var(--text1); background:#fff; }
+.modal-body :deep(.ts-wrap),
+.modal-body :deep(.ts-trigger) { width:100%; }
 </style>

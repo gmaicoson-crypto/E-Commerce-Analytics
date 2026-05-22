@@ -31,13 +31,9 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup_sweep_stale_alerts() -> None:
     """启动时清理一次:商品库存已恢复但预警通知遗留的历史记录。"""
-    from database import SessionLocal
-    with SessionLocal() as db:
-        ids = df.sweep_stale_stock_alerts(db)
-        if ids:
-            print(f"[simulator] startup sweep: removed {len(ids)} stale stock_alert notifications")
-            for nid in ids:
-                notify("notification", "delete", {"id": nid})
+    ids = df.sweep_stale_stock_alerts(None)
+    if ids:
+        print(f"[simulator] startup sweep: removed {len(ids)} stale stock_alert notifications")
 
 
 @app.post("/api/maintenance/sweep_stock_alerts")

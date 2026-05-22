@@ -22,23 +22,20 @@ const PROVINCES = [
   '香港', '澳门',
 ]
 const CATEGORIES = ['服装', '电子', '食品', '家居', '美妆']
-const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'completed', 'cancelled', 'refunded']
+const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'completed', 'cancelled']
 
 // 订单状态机:与 backend data_factory.ALLOWED_ORDER_TRANSITIONS 严格对齐
 // 编辑订单时 status 下拉只展示当前状态 + 可达后继
 const ALLOWED_ORDER_TRANSITIONS = {
   pending:   ['paid', 'cancelled'],
-  paid:      ['shipped', 'refunded'],
+  paid:      ['shipped'],
   shipped:   ['completed'],
   completed: [],
   cancelled: [],
-  refunded:  [],
 }
-const REFUND_STATUSES = ['processing', 'completed']
-const REFUND_REASONS = ['quality', 'wrong_item', 'no_reason', 'logistics']
 const FINANCE_TYPES = ['income', 'expense']
-const FINANCE_CATEGORIES = ['sales_income', 'logistics_cost', 'ad_cost', 'refund_out']
-const NOTIF_TYPES = ['stock_alert', 'refund_alert', 'order_alert', 'sales_alert']
+const FINANCE_CATEGORIES = ['sales_income', 'logistics_cost', 'ad_cost']
+const NOTIF_TYPES = ['stock_alert', 'order_alert', 'sales_alert']
 
 // ─── 实体 schema ─────────────────────────────────────────────────────
 
@@ -132,30 +129,7 @@ const ENTITIES = {
     ],
     supportsBulkDelete: true,
     editFields: [
-      { key: 'status', label: '状态', type: 'select', options: ORDER_STATUSES, hint: '受状态机约束:pending→paid/cancelled,paid→shipped/refunded,shipped→completed' },
-    ],
-  },
-  refund: {
-    label: '退款',
-    cols: [
-      { key: 'id',            label: 'ID' },
-      { key: 'order_id',      label: '订单 ID' },
-      { key: 'refund_amount', label: '退款金额', fmt: fmtMoney },
-      { key: 'reason',        label: '原因' },
-      { key: 'status',        label: '状态' },
-      { key: 'created_at',    label: '创建时间', fmt: fmtDate },
-    ],
-    filters: [
-      { key: 'status', label: '状态', options: REFUND_STATUSES },
-    ],
-    createFields: [
-      { key: 'order_id', label: '订单 ID', type: 'number', hint: '空=随机选 completed 订单' },
-      { key: 'amount',   label: '金额',    type: 'number', hint: '空=订单金额 30-100% 随机' },
-    ],
-    editFields: [
-      { key: 'status',        label: '状态', type: 'select', options: REFUND_STATUSES },
-      { key: 'reason',        label: '原因', type: 'select', options: REFUND_REASONS },
-      { key: 'refund_amount', label: '退款金额', type: 'number' },
+      { key: 'status', label: '状态', type: 'select', options: ORDER_STATUSES, hint: '受状态机约束:pending→paid/cancelled,paid→shipped,shipped→completed' },
     ],
   },
   finance: {
@@ -269,7 +243,6 @@ async function refreshCounts() {
     $('#cnt-customers').textContent     = (d.customers ?? 0).toLocaleString()
     $('#cnt-products').textContent      = (d.products ?? 0).toLocaleString()
     $('#cnt-orders').textContent        = (d.orders ?? 0).toLocaleString()
-    $('#cnt-refunds').textContent       = (d.refunds ?? 0).toLocaleString()
     $('#cnt-finance').textContent       = (d.finance_records ?? 0).toLocaleString()
     $('#cnt-notifications').textContent = (d.notifications ?? 0).toLocaleString()
     setStatus('已连接', 'ok')
@@ -580,7 +553,7 @@ const AUTO = {
       pending_to_paid:      pct('tr-pp', 60),
       pending_to_cancel:    pct('tr-pc', 10),
       paid_to_shipped:      pct('tr-ps', 60),
-      paid_to_refunded:     pct('tr-pr', 5),
+      paid_to_refunded:     0,
       shipped_to_completed: pct('tr-sc', 80),
       backfill_enabled:     $('#bf-enabled').checked,
       backfill_start_date:  $('#bf-start').value || null,
@@ -645,7 +618,6 @@ const AUTO = {
     set('auto-adv-paid',      st.adv_paid)
     set('auto-adv-cancelled', st.adv_cancelled)
     set('auto-adv-shipped',   st.adv_shipped)
-    set('auto-adv-refunded',  st.adv_refunded)
     set('auto-adv-completed', st.adv_completed)
     // Config 输入:**只在首次加载**同步;之后用户的输入是真理,Stop→Start 后才以 readConfig() 的当前值应用
     if (s?.config && AUTO.firstSync) {
@@ -658,7 +630,6 @@ const AUTO = {
       setPct('tr-pp',         c.pending_to_paid)
       setPct('tr-pc',         c.pending_to_cancel)
       setPct('tr-ps',         c.paid_to_shipped)
-      setPct('tr-pr',         c.paid_to_refunded)
       setPct('tr-sc',         c.shipped_to_completed)
       if (typeof c.backfill_enabled === 'boolean') $('#bf-enabled').checked = c.backfill_enabled
       if (c.backfill_start_date) $('#bf-start').value = c.backfill_start_date

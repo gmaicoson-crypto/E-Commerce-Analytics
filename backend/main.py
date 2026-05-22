@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import asyncio
 
 from database import engine, Base
-from routers import auth, system, sales, products, users, orders, finance, notifications, sse, notify
+from routers import auth, system, sales, products, users, orders, finance, notifications, sse, notify, ingest
 
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
@@ -46,6 +46,7 @@ app.include_router(finance.router, prefix="/api/finance", tags=["Finance"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 app.include_router(sse.router, prefix="/api/sse", tags=["Streaming"])
 app.include_router(notify.router, prefix="/api/notify", tags=["Notify"])
+app.include_router(ingest.router, prefix="/api/ingest", tags=["Simulator Ingest"])
 
 # Health check endpoint
 @app.get("/health")
