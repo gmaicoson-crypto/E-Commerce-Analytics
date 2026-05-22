@@ -1,14 +1,16 @@
 import re
+import random
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from database import get_db
 from auth import verify_password, create_access_token, hash_password
 from dependencies import get_current_user
-from models import Admin, Employee, Module, EmployeeModulePermission
-from schemas import LoginRequest
+from models import Admin, Employee, Module, EmployeeModulePermission, AdminVerificationCode
+from schemas import LoginRequest, SendCodeRequest, AdminRegisterRequest
+from email_service import send_email
 from utils import success_response
 
 router = APIRouter()
@@ -28,12 +30,20 @@ class PasswordChange(BaseModel):
 
 @router.post("/login", response_model=dict)
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Login endpoint - check both admins and employees tables."""
+    """Login endpoint - 用邮箱登录(也兼容老的 username 登录,先匹 email 再匹 username)。
+
+    管理员和员工都查;两个表都 email 唯一,所以查询无歧义。
+    """
+    from sqlalchemy import or_
+
     user = None
     role = None
+    ident = (request.username or "").strip()
 
-    # Try admin table first
-    admin = db.query(Admin).filter(Admin.username == request.username).first()
+    # 管理员表:email 或 username 任一匹配
+    admin = db.query(Admin).filter(
+        or_(Admin.email == ident, Admin.username == ident)
+    ).first()
     if admin:
         if verify_password(request.password, admin.password_hash) and admin.is_active:
             user = admin
@@ -41,9 +51,11 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             admin.last_login_at = datetime.utcnow()
             db.commit()
 
-    # Try employee table if not found
+    # 员工表
     if not user:
-        employee = db.query(Employee).filter(Employee.username == request.username).first()
+        employee = db.query(Employee).filter(
+            or_(Employee.email == ident, Employee.username == ident)
+        ).first()
         if employee:
             if verify_password(request.password, employee.password_hash) and employee.is_active:
                 user = employee
@@ -94,6 +106,98 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     })
 
     return response
+
+
+@router.post("/admin/send-code", response_model=dict)
+async def admin_send_code(body: SendCodeRequest, db: Session = Depends(get_db)):
+    """管理员注册:发送邮箱验证码。
+
+    限频:同邮箱 60 秒内只能发一次,避免滥用。
+    """
+    email = body.email.strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "邮箱格式不正确")
+    if db.query(Admin).filter(Admin.email == email).first():
+        raise HTTPException(400, "该邮箱已注册")
+
+    # 限频
+    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    recent = (
+        db.query(AdminVerificationCode)
+        .filter(AdminVerificationCode.email == email, AdminVerificationCode.created_at >= cutoff)
+        .first()
+    )
+    if recent:
+        raise HTTPException(429, "请求过于频繁,60 秒后重试")
+
+    code = "".join(random.choices("0123456789", k=6))
+    rec = AdminVerificationCode(
+        email=email,
+        code=code,
+        expires_at=datetime.utcnow() + timedelta(minutes=10),
+    )
+    db.add(rec)
+    db.commit()
+
+    subject = "电商数据分析平台 · 管理员注册验证码"
+    text = (
+        f"您正在注册管理员账号,本次验证码是:\n\n"
+        f"    {code}\n\n"
+        f"10 分钟内有效。如非本人操作,请忽略本邮件。"
+    )
+    try:
+        send_email(email, subject, text)
+    except RuntimeError as e:
+        # SMTP 未配置:把记录回滚,告诉前端
+        db.delete(rec)
+        db.commit()
+        raise HTTPException(500, str(e))
+    except Exception as e:
+        db.delete(rec)
+        db.commit()
+        raise HTTPException(500, f"邮件发送失败:{e}")
+
+    return success_response({"sent": True, "email": email, "expires_in": 600})
+
+
+@router.post("/admin/register", response_model=dict)
+async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db)):
+    """管理员注册:校验验证码后创建账号。"""
+    username = body.username.strip()
+    email = body.email.strip().lower()
+
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "邮箱格式不正确")
+    if db.query(Admin).filter(Admin.username == username).first():
+        raise HTTPException(400, "用户名已被注册")
+    if db.query(Admin).filter(Admin.email == email).first():
+        raise HTTPException(400, "邮箱已被注册")
+
+    rec = (
+        db.query(AdminVerificationCode)
+        .filter(
+            AdminVerificationCode.email == email,
+            AdminVerificationCode.code == body.code,
+            AdminVerificationCode.used_at.is_(None),
+            AdminVerificationCode.expires_at >= datetime.utcnow(),
+        )
+        .order_by(AdminVerificationCode.id.desc())
+        .first()
+    )
+    if not rec:
+        raise HTTPException(400, "验证码无效或已过期")
+
+    admin = Admin(
+        username=username,
+        password_hash=hash_password(body.password),
+        email=email,
+        is_active=True,
+    )
+    db.add(admin)
+    rec.used_at = datetime.utcnow()
+    db.commit()
+    db.refresh(admin)
+    return success_response({"admin_id": admin.id, "username": admin.username, "email": admin.email})
 
 
 @router.post("/logout", response_model=dict)

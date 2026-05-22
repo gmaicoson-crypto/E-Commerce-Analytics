@@ -53,6 +53,10 @@ class ApiClient {
 
   // ─── Auth ─────────────────────────────────────────────────────────────
   login(username: string, password: string)         { return this.request<any>('POST', '/auth/login', { username, password }) }
+  sendAdminCode(email: string)                      { return this.request<any>('POST', '/auth/admin/send-code', { email }) }
+  registerAdmin(body: { username: string; email: string; password: string; code: string }) {
+    return this.request<any>('POST', '/auth/admin/register', body)
+  }
   logout()                                          { return this.request<any>('POST', '/auth/logout') }
   getCurrentUser()                                  { return this.request<any>('GET',  '/auth/me') }
   updateProfile(payload: { username?: string; email?: string }) {

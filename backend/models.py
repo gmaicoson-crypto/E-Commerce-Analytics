@@ -94,6 +94,18 @@ class Admin(Base):
     last_login_at = Column(DateTime, nullable=True)
 
 
+class AdminVerificationCode(Base):
+    """管理员注册流程的邮箱验证码。10 分钟内有效,used_at 标记已使用。"""
+    __tablename__ = "admin_verification_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), nullable=False, index=True)
+    code = Column(String(6), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
 class Employee(Base):
     __tablename__ = "employees"
 

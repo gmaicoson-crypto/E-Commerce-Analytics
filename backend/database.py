@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     deepseek_api_key: Optional[str] = Field(default=None, alias="DEEPSEEK_API_KEY")
     deepseek_base_url: str = Field(default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
     debug: bool = Field(default=False, alias="DEBUG")
+    # SMTP(管理员注册验证码邮件)
+    smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int           = Field(default=465,  alias="SMTP_PORT")
+    smtp_user: Optional[str] = Field(default=None, alias="SMTP_USER")
+    smtp_pass: Optional[str] = Field(default=None, alias="SMTP_PASS")
+    smtp_from: Optional[str] = Field(default=None, alias="SMTP_FROM")
 
     class Config:
         env_file = ".env"
