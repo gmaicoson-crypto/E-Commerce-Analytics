@@ -8,7 +8,13 @@ from typing import Optional
 from database import get_db
 from auth import verify_password, create_access_token, hash_password
 from dependencies import get_current_user
-from models import Admin, Employee, Module, EmployeeModulePermission, AdminVerificationCode
+from models import (
+    Admin,
+    Employee,
+    Module,
+    EmployeeModulePermission,
+    AdminVerificationCode,
+)
 from schemas import LoginRequest, SendCodeRequest, AdminRegisterRequest
 from email_service import send_email
 from utils import success_response
@@ -41,9 +47,11 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     ident = (request.username or "").strip()
 
     # 管理员表:email 或 username 任一匹配
-    admin = db.query(Admin).filter(
-        or_(Admin.email == ident, Admin.username == ident)
-    ).first()
+    admin = (
+        db.query(Admin)
+        .filter(or_(Admin.email == ident, Admin.username == ident))
+        .first()
+    )
     if admin:
         if verify_password(request.password, admin.password_hash) and admin.is_active:
             user = admin
@@ -53,11 +61,16 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 
     # 员工表
     if not user:
-        employee = db.query(Employee).filter(
-            or_(Employee.email == ident, Employee.username == ident)
-        ).first()
+        employee = (
+            db.query(Employee)
+            .filter(or_(Employee.email == ident, Employee.username == ident))
+            .first()
+        )
         if employee:
-            if verify_password(request.password, employee.password_hash) and employee.is_active:
+            if (
+                verify_password(request.password, employee.password_hash)
+                and employee.is_active
+            ):
                 user = employee
                 role = "employee"
                 employee.last_login_at = datetime.utcnow()
@@ -66,7 +79,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
+            detail="Invalid username or password",
         )
 
     # Create JWT token
@@ -74,20 +87,25 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         data={
             "sub": str(user.id),
             "role": role,
-            "table": "admins" if role == "admin" else "employees"
+            "table": "admins" if role == "admin" else "employees",
         }
     )
 
     # Get permissions (if employee)
     permissions = None
     if role == "employee":
-        perms = db.query(Module).join(
-            EmployeeModulePermission,
-            Module.id == EmployeeModulePermission.module_id
-        ).filter(
-            EmployeeModulePermission.employee_id == user.id,
-            EmployeeModulePermission.is_active == True
-        ).all()
+        perms = (
+            db.query(Module)
+            .join(
+                EmployeeModulePermission,
+                Module.id == EmployeeModulePermission.module_id,
+            )
+            .filter(
+                EmployeeModulePermission.employee_id == user.id,
+                EmployeeModulePermission.is_active == True,
+            )
+            .all()
+        )
         permissions = [m.module_key for m in perms]
     elif role == "admin":
         modules = db.query(Module).all()
@@ -96,14 +114,16 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     # Map role to frontend expectation (employee -> staff)
     frontend_role = "staff" if role == "employee" else role
 
-    response = success_response({
-        "token": access_token,
-        "role": frontend_role,
-        "user_id": user.id,
-        "username": user.username,
-        "expires_in": 86400,
-        "permissions": permissions
-    })
+    response = success_response(
+        {
+            "token": access_token,
+            "role": frontend_role,
+            "user_id": user.id,
+            "username": user.username,
+            "expires_in": 86400,
+            "permissions": permissions,
+        }
+    )
 
     return response
 
@@ -124,7 +144,10 @@ async def admin_send_code(body: SendCodeRequest, db: Session = Depends(get_db)):
     cutoff = datetime.utcnow() - timedelta(seconds=60)
     recent = (
         db.query(AdminVerificationCode)
-        .filter(AdminVerificationCode.email == email, AdminVerificationCode.created_at >= cutoff)
+        .filter(
+            AdminVerificationCode.email == email,
+            AdminVerificationCode.created_at >= cutoff,
+        )
         .first()
     )
     if recent:
@@ -197,20 +220,19 @@ async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_d
     rec.used_at = datetime.utcnow()
     db.commit()
     db.refresh(admin)
-    return success_response({"admin_id": admin.id, "username": admin.username, "email": admin.email})
+    return success_response(
+        {"admin_id": admin.id, "username": admin.username, "email": admin.email}
+    )
 
 
-@router.post("/logout", response_model=dict)
-async def logout(current_user=Depends(get_current_user)):
+@router.post("/logout", response_model=dict, dependencies=[Depends(get_current_user)])
+async def logout():
     """Logout endpoint - JWT is stateless, just return success."""
     return success_response(message="Logged out successfully")
 
 
 @router.get("/me", response_model=dict)
-async def get_me(
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
+async def get_me(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Get current user info with permissions."""
     permissions = []
 
@@ -218,13 +240,18 @@ async def get_me(
         modules = db.query(Module).all()
         permissions = [m.module_key for m in modules]
     elif current_user.role == "employee":
-        perms = db.query(Module).join(
-            EmployeeModulePermission,
-            Module.id == EmployeeModulePermission.module_id
-        ).filter(
-            EmployeeModulePermission.employee_id == current_user.id,
-            EmployeeModulePermission.is_active == True
-        ).all()
+        perms = (
+            db.query(Module)
+            .join(
+                EmployeeModulePermission,
+                Module.id == EmployeeModulePermission.module_id,
+            )
+            .filter(
+                EmployeeModulePermission.employee_id == current_user.id,
+                EmployeeModulePermission.is_active == True,
+            )
+            .all()
+        )
         permissions = [m.module_key for m in perms]
 
     # Map role for frontend
@@ -261,26 +288,37 @@ async def update_me(
         raise HTTPException(status_code=404, detail="用户不存在")
 
     if body.username is not None and body.username != user.username:
-        if db.query(Model).filter(Model.username == body.username, Model.id != user.id).first():
+        if (
+            db.query(Model)
+            .filter(Model.username == body.username, Model.id != user.id)
+            .first()
+        ):
             raise HTTPException(status_code=400, detail="用户名已存在")
         user.username = body.username
 
     if body.email is not None and body.email != user.email:
         if not EMAIL_RE.match(body.email):
             raise HTTPException(status_code=400, detail="邮箱格式不正确")
-        if db.query(Model).filter(Model.email == body.email, Model.id != user.id).first():
+        if (
+            db.query(Model)
+            .filter(Model.email == body.email, Model.id != user.id)
+            .first()
+        ):
             raise HTTPException(status_code=400, detail="邮箱已存在")
         user.email = body.email
 
     db.commit()
     db.refresh(user)
 
-    return success_response({
-        "user_id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "role": "staff" if current_user.role == "employee" else "admin",
-    }, message="资料更新成功")
+    return success_response(
+        {
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": "staff" if current_user.role == "employee" else "admin",
+        },
+        message="资料更新成功",
+    )
 
 
 @router.post("/me/password", response_model=dict)

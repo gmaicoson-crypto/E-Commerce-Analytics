@@ -1,4 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Enum as SQLEnum, ForeignKey, Text, DECIMAL, Index
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Boolean,
+    Enum as SQLEnum,
+    ForeignKey,
+    Text,
+    DECIMAL,
+    Index,
+)
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -35,7 +46,7 @@ class OrderStatusEnum(str, enum.Enum):
     paid = "paid"
     shipped = "shipped"
     completed = "completed"
-    cancelled = "cancelled"   # pending/paid → cancelled,不计入收入
+    cancelled = "cancelled"  # pending/paid → cancelled,不计入收入
     refunded = "refunded"
 
 
@@ -96,6 +107,7 @@ class Admin(Base):
 
 class AdminVerificationCode(Base):
     """管理员注册流程的邮箱验证码。10 分钟内有效,used_at 标记已使用。"""
+
     __tablename__ = "admin_verification_codes"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -130,9 +142,7 @@ class Module(Base):
 
 class EmployeeModulePermission(Base):
     __tablename__ = "employee_module_permissions"
-    __table_args__ = (
-        Index('idx_employee_module', 'employee_id', 'module_id'),
-    )
+    __table_args__ = (Index("idx_employee_module", "employee_id", "module_id"),)
 
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
@@ -149,7 +159,9 @@ class PermissionChangeLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     admin_id = Column(Integer, ForeignKey("admins.id"), nullable=False, index=True)
-    target_user_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    target_user_id = Column(
+        Integer, ForeignKey("employees.id"), nullable=False, index=True
+    )
     module_id = Column(Integer, ForeignKey("modules.id"), nullable=False)
     action = Column(SQLEnum(PermissionActionEnum), nullable=False)
     changed_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -167,7 +179,9 @@ class Product(Base):
     cost = Column(DECIMAL(10, 2), nullable=False)
     stock = Column(Integer, default=0, index=True)
     low_stock_threshold = Column(Integer, default=10)
-    status = Column(SQLEnum(ProductStatusEnum), default=ProductStatusEnum.on_sale, index=True)
+    status = Column(
+        SQLEnum(ProductStatusEnum), default=ProductStatusEnum.on_sale, index=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     order_items = relationship("OrderItem", back_populates="product")
@@ -182,7 +196,9 @@ class Customer(Base):
     age_group = Column(SQLEnum(AgeGroupEnum), nullable=False)
     province = Column(String(20), nullable=False, index=True)
     customer_type = Column(SQLEnum(CustomerTypeEnum), nullable=False, index=True)
-    registered_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    registered_at = Column(
+        DateTime, default=datetime.utcnow, nullable=False, index=True
+    )
 
     orders = relationship("Order", back_populates="customer")
 
@@ -190,20 +206,26 @@ class Customer(Base):
 class Order(Base):
     __tablename__ = "orders"
     __table_args__ = (
-        Index('idx_customer_status_created', 'customer_id', 'status', 'created_at'),
+        Index("idx_customer_status_created", "customer_id", "status", "created_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     order_no = Column(String(32), unique=True, nullable=False, index=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    customer_id = Column(
+        Integer, ForeignKey("customers.id"), nullable=False, index=True
+    )
     total_amount = Column(DECIMAL(10, 2), nullable=False)
-    status = Column(SQLEnum(OrderStatusEnum), default=OrderStatusEnum.pending, index=True)
+    status = Column(
+        SQLEnum(OrderStatusEnum), default=OrderStatusEnum.pending, index=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     paid_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True, index=True)
 
     customer = relationship("Customer", back_populates="orders")
-    order_items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+    order_items = relationship(
+        "OrderItem", back_populates="order", cascade="all, delete-orphan"
+    )
 
 
 class OrderItem(Base):
@@ -227,7 +249,9 @@ class Refund(Base):
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
     refund_amount = Column(DECIMAL(10, 2), nullable=False)
     reason = Column(SQLEnum(RefundReasonEnum), nullable=False)
-    status = Column(SQLEnum(RefundStatusEnum), default=RefundStatusEnum.processing, index=True)
+    status = Column(
+        SQLEnum(RefundStatusEnum), default=RefundStatusEnum.processing, index=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     completed_at = Column(DateTime, nullable=True)
 
@@ -235,14 +259,16 @@ class Refund(Base):
 class FinanceRecord(Base):
     __tablename__ = "finance_records"
     __table_args__ = (
-        Index('idx_type_category_recorded', 'type', 'category', 'recorded_at'),
+        Index("idx_type_category_recorded", "type", "category", "recorded_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     type = Column(SQLEnum(FinanceTypeEnum), nullable=False, index=True)
     category = Column(SQLEnum(FinanceCategoryEnum), nullable=False, index=True)
     amount = Column(DECIMAL(10, 2), nullable=False)
-    related_order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)
+    related_order_id = Column(
+        Integer, ForeignKey("orders.id"), nullable=True, index=True
+    )
     recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 

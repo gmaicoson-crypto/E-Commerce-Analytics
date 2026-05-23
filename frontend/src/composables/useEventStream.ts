@@ -33,18 +33,21 @@ export function useDebouncedReload(
   const realtime = useRealtimeStore()
   let lastFired = 0
   let pendingTimer: number | null = null
-  const clear = () => {
+
+  function clearPendingTimer(): void {
     if (pendingTimer !== null) {
       window.clearTimeout(pendingTimer)
       pendingTimer = null
     }
   }
+
   // 把多个 entity 计数器合并成一个稳定字符串,变化即触发
   const stopWatch = watch(
-    () => entities.map((e) => realtime.counters[e] ?? 0).join(','),
+    () => entities.map((entity) => realtime.counters[entity] ?? 0).join(','),
     () => {
       const now = Date.now()
       const elapsed = now - lastFired
+
       if (elapsed >= delayMs) {
         // 距上次刷新足够久 → 立即触发(leading edge)
         lastFired = now
@@ -59,8 +62,9 @@ export function useDebouncedReload(
       }
     },
   )
+
   onBeforeUnmount(() => {
-    clear()
+    clearPendingTimer()
     stopWatch()
   })
 }

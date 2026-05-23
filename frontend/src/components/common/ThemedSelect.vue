@@ -1,9 +1,21 @@
 <template>
-  <div ref="wrapEl" class="ts-wrap">
-    <button type="button" class="ts-trigger" :class="{ open }" @click="toggle">
+  <div
+    ref="wrapEl"
+    class="ts-wrap"
+  >
+    <button
+      type="button"
+      class="ts-trigger"
+      :class="{ open }"
+      @click="toggle"
+    >
       <span class="ts-text">{{ displayLabel }}</span>
     </button>
-    <div v-if="open" class="ts-popup" role="listbox">
+    <div
+      v-if="open"
+      class="ts-popup"
+      role="listbox"
+    >
       <div
         v-for="opt in options"
         :key="opt.value"
@@ -47,8 +59,8 @@ const wrapEl = ref<HTMLElement | null>(null)
 const displayLabel = computed(
   () => props.options.find((o) => o.value === props.modelValue)?.label ?? props.placeholder,
 )
-const triggerMinWidth = computed(() =>
-  typeof props.minWidth === 'number' ? `${props.minWidth}px` : props.minWidth,
+const triggerMinWidth = computed(
+  () => typeof props.minWidth === 'number' ? `${props.minWidth}px` : props.minWidth,
 )
 
 function toggle(): void {
@@ -73,7 +85,10 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMouseDown))
 </script>
 
 <style scoped>
-.ts-wrap { position: relative; }
+.ts-wrap {
+  position: relative;
+}
+
 .ts-trigger {
   display: inline-flex;
   align-items: center;
@@ -88,20 +103,39 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMouseDown))
   color: var(--text1, #111827);
   cursor: pointer;
   min-width: v-bind(triggerMinWidth);
-  transition: border-color .15s, background-color .15s, box-shadow .15s;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
+
 .ts-trigger::after {
   content: '';
   width: 12px;
   height: 12px;
   background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d6a4f' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>") center/contain no-repeat;
   flex-shrink: 0;
-  transition: transform .15s;
+  transition: transform 0.15s;
 }
-.ts-trigger:hover { border-color: var(--green, #52b788); background-color: var(--green-50, #f0fdf4); }
-.ts-trigger.open  { border-color: var(--green, #52b788); box-shadow: 0 0 0 3px rgba(82, 183, 136, .18); }
-.ts-trigger.open::after { transform: rotate(180deg); }
-.ts-text { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ts-trigger:hover {
+  border-color: var(--green, #52b788);
+  background-color: var(--green-50, #f0fdf4);
+}
+
+.ts-trigger.open {
+  border-color: var(--green, #52b788);
+  box-shadow: 0 0 0 3px rgba(82, 183, 136, 0.18);
+}
+
+.ts-trigger.open::after {
+  transform: rotate(180deg);
+}
+
+.ts-text {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .ts-popup {
   position: absolute;
@@ -111,12 +145,13 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMouseDown))
   background: var(--card, #fff);
   border: 1.5px solid var(--border, #e5e7eb);
   border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
   padding: 4px;
   z-index: 10001;
   max-height: 280px;
   overflow-y: auto;
 }
+
 .ts-opt {
   padding: 7px 12px;
   border-radius: 6px;
@@ -125,9 +160,21 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMouseDown))
   color: var(--text1, #111827);
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color .12s, color .12s;
+  transition: background-color 0.12s, color 0.12s;
 }
-.ts-opt:hover           { background: var(--green-50, #f0fdf4); color: var(--green-dark, #2d6a4f); }
-.ts-opt.active          { background: var(--green, #52b788); color: #fff; }
-.ts-opt.active:hover    { background: var(--green-dark, #2d6a4f); color: #fff; }
+
+.ts-opt:hover {
+  background: var(--green-50, #f0fdf4);
+  color: var(--green-dark, #2d6a4f);
+}
+
+.ts-opt.active {
+  background: var(--green, #52b788);
+  color: #fff;
+}
+
+.ts-opt.active:hover {
+  background: var(--green-dark, #2d6a4f);
+  color: #fff;
+}
 </style>

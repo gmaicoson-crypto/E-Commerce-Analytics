@@ -8,7 +8,7 @@ export interface NavItem {
   icon: string
   path: string
   adminOnly: boolean
-  /** 对应后端 module_key;非 admin 角色按 permissions 判断显示。adminOnly 项可不填。 */
+  /** 对应后端 module_key；非 admin 角色按 permissions 判断显示。adminOnly 项可不填。 */
   moduleKey?: string
 }
 
@@ -19,15 +19,26 @@ export interface TableColumn<T = Record<string, unknown>> {
   align?: 'left' | 'right' | 'center'
   wrap?: boolean
   render?: (value: unknown, row: T, index: number) => unknown
-  /** 自定义表头渲染(覆盖 title 文本显示);用于在表头放过滤器、复选框等 */
+  /** 自定义表头渲染(覆盖 title 文本显示)；用于在表头放过滤器、复选框等。 */
   headerRender?: () => unknown
 }
 
 // Badge 颜色
-export type BadgeColor = 'green' | 'red' | 'yellow' | 'blue' | 'purple' | 'gray' | 'orange'
+export type BadgeColor =
+  | 'green'
+  | 'red'
+  | 'yellow'
+  | 'blue'
+  | 'purple'
+  | 'gray'
+  | 'orange'
 
 // 通知
-export type NotificationType = '库存预警' | '大额退款' | '异常订单' | '销售额波动'
+export type NotificationType =
+  | '库存预警'
+  | '大额退款'
+  | '异常订单'
+  | '销售额波动'
 
 export interface Notification {
   id: number
@@ -110,4 +121,3 @@ export interface PermissionLog {
   changed_at: string | null
   remark: string | null
 }
-

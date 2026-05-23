@@ -7,6 +7,7 @@
     SMTP_PASS=xxxxxxxxxxxxxxxx      # 邮箱的 "授权码" (不是登录密码)
     SMTP_FROM=youraccount@163.com   # 可选,缺省=SMTP_USER
 """
+
 import smtplib
 from email.message import EmailMessage
 
@@ -19,7 +20,9 @@ def send_email(to: str, subject: str, body: str) -> None:
     user = (settings.smtp_user or "").strip()
     password = (settings.smtp_pass or "").strip()
     if not host or not user or not password:
-        raise RuntimeError("SMTP 未配置:请在 backend/.env 设置 SMTP_HOST/SMTP_USER/SMTP_PASS")
+        raise RuntimeError(
+            "SMTP 未配置:请在 backend/.env 设置 SMTP_HOST/SMTP_USER/SMTP_PASS"
+        )
 
     port = int(settings.smtp_port or 465)
     sender = (settings.smtp_from or "").strip() or user

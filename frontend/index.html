@@ -1,12 +1,25 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>电商数据分析平台</title>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet"
+  />
+
   <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     :root {
       --sidebar-w: 68px;
       --header-h: 60px;
@@ -26,47 +39,138 @@
       --r: 14px;
       --r-sm: 8px;
     }
-    html, body { height: 100%; }
+
+    html,
+    body {
+      height: 100%;
+    }
+
     body {
       font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
       color: var(--text1);
       overflow: hidden;
     }
-    #app { display: flex; height: 100vh; overflow: hidden; }
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    #app {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 99px;
+    }
+
     @keyframes fadeSlide {
-      from { opacity: 0; transform: translateY(10px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
-    .fade-in { animation: fadeSlide 0.28s ease-out; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .spin { animation: spin 1s linear infinite; }
+
+    .fade-in {
+      animation: fadeSlide 0.28s ease-out;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .spin {
+      animation: spin 1s linear infinite;
+    }
+
     @keyframes pulse {
-      0%, 100% { opacity: 0.3; transform: scale(0.8); }
-      50%       { opacity: 1;   transform: scale(1.1); }
+      0%,
+      100% {
+        opacity: 0.3;
+        transform: scale(0.8);
+      }
+
+      50% {
+        opacity: 1;
+        transform: scale(1.1);
+      }
     }
-    button { cursor: pointer; border: none; background: none; font-family: inherit; }
-    input, select, textarea { font-family: inherit; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-family: inherit;
+    }
+
+    input,
+    select,
+    textarea {
+      font-family: inherit;
+    }
 
     /* ─── 通用布局/工具类 (跨视图复用) ─────────────────────────────── */
-    .mb16          { margin-bottom: 16px; }
-    .kpi-row       { display: flex; gap: 16px; margin-bottom: 20px; }
-    .grid-equal-2  { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
-    .chart-center  { height: 100%; display: flex; flex-direction: column; justify-content: center; }
-    .ico-btn       {
-      background: transparent; border: none;
-      width: 26px; height: 26px; border-radius: 6px;
-      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-      transition: background .15s;
+    .mb16 {
+      margin-bottom: 16px;
     }
-    .ico-btn:hover { background: var(--bg); }
+
+    .kpi-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .grid-equal-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .chart-center {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      height: 100%;
+    }
+
+    .ico-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .ico-btn:hover {
+      background: var(--bg);
+    }
   </style>
 </head>
+
 <body>
   <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
+
 </html>

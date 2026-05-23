@@ -9,7 +9,10 @@ from models import Admin, Employee, Module, EmployeeModulePermission
 security = HTTPBearer()
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
     """Extract and validate JWT token, return user object."""
     token = credentials.credentials
     payload = decode_access_token(token)
@@ -60,17 +63,16 @@ def require_admin(current_user=Depends(get_current_user)):
     """Dependency to check if user is admin."""
     if current_user.role != "admin":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
     return current_user
 
 
 def check_module_permission(module_key: str) -> Callable:
     """Factory function to create a dependency that checks module permission."""
+
     async def verify_permission(
-        current_user=Depends(get_current_user),
-        db: Session = Depends(get_db)
+        current_user=Depends(get_current_user), db: Session = Depends(get_db)
     ):
         # Admin has access to all modules
         if current_user.role == "admin":
@@ -81,20 +83,22 @@ def check_module_permission(module_key: str) -> Callable:
             module = db.query(Module).filter(Module.module_key == module_key).first()
             if not module:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Module not found"
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Module not found"
                 )
 
-            permission = db.query(EmployeeModulePermission).filter(
-                EmployeeModulePermission.employee_id == current_user.id,
-                EmployeeModulePermission.module_id == module.id,
-                EmployeeModulePermission.is_active == True
-            ).first()
+            permission = (
+                db.query(EmployeeModulePermission)
+                .filter(
+                    EmployeeModulePermission.employee_id == current_user.id,
+                    EmployeeModulePermission.module_id == module.id,
+                    EmployeeModulePermission.is_active == True,
+                )
+                .first()
+            )
 
             if not permission:
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Module access denied"
+                    status_code=status.HTTP_403_FORBIDDEN, detail="Module access denied"
                 )
 
         return current_user
@@ -102,17 +106,23 @@ def check_module_permission(module_key: str) -> Callable:
     return verify_permission
 
 
-def get_user_permissions(user_id: int, role: str, db: Session = Depends(get_db)) -> list:
+def get_user_permissions(
+    user_id: int, role: str, db: Session = Depends(get_db)
+) -> list:
     """Get list of module_keys that user has access to."""
     if role == "admin":
         # Admin has all permissions
         modules = db.query(Module).all()
         return [m.module_key for m in modules]
     elif role == "employee":
-        perms = db.query(EmployeeModulePermission).filter(
-            EmployeeModulePermission.employee_id == user_id,
-            EmployeeModulePermission.is_active == True
-        ).all()
+        perms = (
+            db.query(EmployeeModulePermission)
+            .filter(
+                EmployeeModulePermission.employee_id == user_id,
+                EmployeeModulePermission.is_active == True,
+            )
+            .all()
+        )
         module_ids = [p.module_id for p in perms]
         modules = db.query(Module).filter(Module.id.in_(module_ids)).all()
         return [m.module_key for m in modules]

@@ -10,7 +10,11 @@ SQL_PATH = ROOT / "database" / "sql" / "create_database.sql"
 
 load_dotenv(BACKEND_DIR / ".env")
 
-url = make_url(os.environ.get("DATABASE_URL", "mysql+pymysql://root:password@localhost:3306/ecommerce_db"))
+url = make_url(
+    os.environ.get(
+        "DATABASE_URL", "mysql+pymysql://root:password@localhost:3306/ecommerce_db"
+    )
+)
 host = url.host or "127.0.0.1"
 port = url.port or 3306
 username = url.username or "root"
@@ -21,15 +25,13 @@ print(f"Creating database '{database}' on {host}:{port}...")
 
 try:
     connection = pymysql.connect(
-        host=host,
-        port=port,
-        user=username,
-        password=password,
-        charset='utf8mb4'
+        host=host, port=port, user=username, password=password, charset="utf8mb4"
     )
 
     with connection.cursor() as cursor:
-        sql = SQL_PATH.read_text(encoding="utf-8").format(database=database.replace("`", "``"))
+        sql = SQL_PATH.read_text(encoding="utf-8").format(
+            database=database.replace("`", "``")
+        )
         cursor.execute(sql)
         connection.commit()
         print(f"[OK] Database '{database}' created successfully")

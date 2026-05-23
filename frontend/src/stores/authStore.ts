@@ -1,18 +1,20 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Role } from '@/types'
 import { api } from '@/services/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const savedToken = localStorage.getItem('token')
-  if (savedToken) api.setToken(savedToken)
+  if (savedToken) {
+    api.setToken(savedToken)
+  }
 
-  const role        = ref<Role | null>(localStorage.getItem('role') as Role | null)
-  const username    = ref<string | null>(localStorage.getItem('username'))
+  const role = ref<Role | null>(localStorage.getItem('role') as Role | null)
+  const username = ref<string | null>(localStorage.getItem('username'))
   const permissions = ref<string[]>(JSON.parse(localStorage.getItem('permissions') || '[]'))
 
   const isLoggedIn = computed(() => !!role.value)
-  const isAdmin    = computed(() => role.value === 'admin')
+  const isAdmin = computed(() => role.value === 'admin')
 
   async function login(user: string, pass: string): Promise<void> {
     try {
@@ -67,9 +69,13 @@ export const useAuthStore = defineStore('auth', () => {
    * 用于:admin 改员工权限后侧边栏自动反映新权限;用户修改个人资料后顶栏即时刷新。
    */
   async function refreshPermissions(): Promise<void> {
-    if (!isLoggedIn.value) return
+    if (!isLoggedIn.value) {
+      return
+    }
+
     try {
       const me = await api.getCurrentUser()
+
       if (me?.role) {
         role.value = me.role
         localStorage.setItem('role', me.role)
@@ -78,7 +84,9 @@ export const useAuthStore = defineStore('auth', () => {
         username.value = me.username
         localStorage.setItem('username', me.username)
       }
+
       const perms: string[] = me?.permissions ?? []
+
       // admin 端 /auth/me 不返回 permissions,这种情况保持原值不动
       if (me?.role === 'staff') {
         permissions.value = perms
@@ -97,5 +105,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { role, username, permissions, isLoggedIn, isAdmin, login, logout, restoreToken, hasPermission, refreshPermissions, setProfile }
+  return {
+    role,
+    username,
+    permissions,
+    isLoggedIn,
+    isAdmin,
+    login,
+    logout,
+    restoreToken,
+    hasPermission,
+    refreshPermissions,
+    setProfile,
+  }
 })

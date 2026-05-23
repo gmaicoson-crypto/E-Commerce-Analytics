@@ -1,10 +1,14 @@
 <template>
   <div>
-    <div style="overflow-x: auto">
+    <div class="table-wrap">
       <table class="dt">
         <thead>
           <tr>
-            <th v-for="col in columns" :key="col.key" :style="{ textAlign: col.align || 'left' }">
+            <th
+              v-for="col in columns"
+              :key="col.key"
+              :style="{ textAlign: col.align || 'left' }"
+            >
               <component v-if="col.headerRender" :is="{ render: () => col.headerRender!() }" />
               <span v-else>{{ col.title }}</span>
             </th>
@@ -15,7 +19,14 @@
             <td :colspan="columns.length" class="empty">{{ emptyText }}</td>
           </tr>
           <tr v-for="(row, i) in paged" :key="i" class="dt-row">
-            <td v-for="col in columns" :key="col.key" :style="{ textAlign: col.align || 'left', whiteSpace: col.wrap ? 'normal' : 'nowrap' }">
+            <td
+              v-for="col in columns"
+              :key="col.key"
+              :style="{
+                textAlign: col.align || 'left',
+                whiteSpace: col.wrap ? 'normal' : 'nowrap',
+              }"
+            >
               <component v-if="col.render" :is="{ render: () => col.render!(row[col.key], row, offset + i) }" />
               <span v-else>{{ row[col.key] ?? '—' }}</span>
             </td>
@@ -36,22 +47,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import AppIcon from './AppIcon.vue'
 import type { TableColumn } from '@/types'
 
-const props = withDefaults(defineProps<{
-  columns: TableColumn[]
-  data: Record<string, unknown>[]
-  pagination?: boolean
-  pageSize?: number
-  emptyText?: string
-}>(), { pagination: false, pageSize: 20, emptyText: '暂无数据' })
+const props = withDefaults(
+  defineProps<{
+    columns: TableColumn[]
+    data: Record<string, unknown>[]
+    pagination?: boolean
+    pageSize?: number
+    emptyText?: string
+  }>(),
+  {
+    pagination: false,
+    pageSize: 20,
+    emptyText: '暂无数据',
+  },
+)
 
-const page       = ref(1)
+const page = ref(1)
 const totalPages = computed(() => Math.max(1, Math.ceil(props.data.length / props.pageSize)))
-const offset     = computed(() => (page.value - 1) * props.pageSize)
-const paged      = computed(() =>
+const offset = computed(() => (page.value - 1) * props.pageSize)
+const paged = computed(() =>
   props.pagination ? props.data.slice(offset.value, offset.value + props.pageSize) : props.data
 )
 
@@ -71,15 +89,94 @@ const visiblePages = computed<(number | '...')[]>(() => {
 </script>
 
 <style scoped>
-.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
-.dt thead th { padding: 11px 14px; font-weight: 700; font-size: 12px; color: var(--text3); border-bottom: 2px solid var(--border); white-space: nowrap; text-transform: uppercase; letter-spacing: .04em; }
-.dt tbody td { padding: 12px 14px; color: var(--text1); border-bottom: 1px solid var(--border); }
-.dt-row:hover { background: var(--green-50); }
-.empty { padding: 40px; text-align: center; color: var(--text3); }
-.pg { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 12px 0 0; }
-.pg-info { font-size: 13px; color: var(--text2); margin-right: 4px; }
-.pg-btn { width: 32px; height: 32px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); color: var(--text1); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; }
-.pg-btn:disabled { background: #f1f5f0; color: var(--text3); cursor: not-allowed; }
-.pg-btn.active   { background: var(--green); border-color: var(--green); color: #fff; font-weight: 700; }
-.pg-dots         { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 32px; color: var(--text3); font-size: 14px; user-select: none; }
+.table-wrap {
+  overflow-x: auto;
+}
+
+.dt {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dt thead th {
+  padding: 11px 14px;
+  border-bottom: 2px solid var(--border);
+  color: var(--text3);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dt tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text1);
+}
+
+.dt-row:hover {
+  background: var(--green-50);
+}
+
+.empty {
+  padding: 40px;
+  color: var(--text3);
+  text-align: center;
+}
+
+.pg {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 12px 0 0;
+}
+
+.pg-info {
+  margin-right: 4px;
+  color: var(--text2);
+  font-size: 13px;
+}
+
+.pg-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text1);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.pg-btn:disabled {
+  background: #f1f5f0;
+  color: var(--text3);
+  cursor: not-allowed;
+}
+
+.pg-btn.active {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+  font-weight: 700;
+}
+
+.pg-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  color: var(--text3);
+  font-size: 14px;
+  user-select: none;
+}
 </style>

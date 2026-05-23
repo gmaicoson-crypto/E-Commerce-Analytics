@@ -5,7 +5,6 @@ import os
 
 import httpx
 
-
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 BACKEND_INGEST_TOKEN = os.environ.get("BACKEND_INGEST_TOKEN")
 
@@ -13,10 +12,20 @@ _client = httpx.Client(timeout=10.0, trust_env=False)
 
 
 def _headers() -> Dict[str, str]:
-    return {"Authorization": f"Bearer {BACKEND_INGEST_TOKEN}"} if BACKEND_INGEST_TOKEN else {}
+    return (
+        {"Authorization": f"Bearer {BACKEND_INGEST_TOKEN}"}
+        if BACKEND_INGEST_TOKEN
+        else {}
+    )
 
 
-def request(method: str, path: str, *, params: Optional[dict] = None, json: Optional[dict] = None):
+def request(
+    method: str,
+    path: str,
+    *,
+    params: Optional[dict] = None,
+    json: Optional[dict] = None,
+):
     res = _client.request(
         method,
         f"{BACKEND_URL}/api/ingest{path}",
@@ -29,7 +38,11 @@ def request(method: str, path: str, *, params: Optional[dict] = None, json: Opti
         detail = payload.get("detail") if isinstance(payload, dict) else None
         if isinstance(detail, dict):
             raise RuntimeError(detail.get("message") or str(detail))
-        raise RuntimeError(payload.get("message") if isinstance(payload, dict) else f"HTTP {res.status_code}")
+        raise RuntimeError(
+            payload.get("message")
+            if isinstance(payload, dict)
+            else f"HTTP {res.status_code}"
+        )
     return payload.get("data")
 
 

@@ -26,7 +26,6 @@ from models import (
     Refund,
 )
 
-
 LARGE_ORDER_THRESHOLD = Decimal("4000")
 LOW_STOCK_DEFAULT_THRESHOLD = 10
 
@@ -167,7 +166,10 @@ def list_customers(db: Session, page: int, page_size: int, **filters):
         if filters.get(key):
             q = q.filter(getattr(Customer, key) == filters[key])
     result = _paginate(q.order_by(Customer.id.desc()), page, page_size)
-    return {"data": [ser_customer(c) for c in result["rows"]], "pagination": result["pagination"]}
+    return {
+        "data": [ser_customer(c) for c in result["rows"]],
+        "pagination": result["pagination"],
+    }
 
 
 def list_products(db: Session, page: int, page_size: int, category=None, status=None):
@@ -177,7 +179,10 @@ def list_products(db: Session, page: int, page_size: int, category=None, status=
     if status:
         q = q.filter(Product.status == status)
     result = _paginate(q.order_by(Product.id.desc()), page, page_size)
-    return {"data": [ser_product(p) for p in result["rows"]], "pagination": result["pagination"]}
+    return {
+        "data": [ser_product(p) for p in result["rows"]],
+        "pagination": result["pagination"],
+    }
 
 
 def list_orders(db: Session, page: int, page_size: int, status=None):
@@ -185,7 +190,10 @@ def list_orders(db: Session, page: int, page_size: int, status=None):
     if status:
         q = q.filter(Order.status == status)
     result = _paginate(q.order_by(Order.id.desc()), page, page_size)
-    return {"data": [ser_order(o) for o in result["rows"]], "pagination": result["pagination"]}
+    return {
+        "data": [ser_order(o) for o in result["rows"]],
+        "pagination": result["pagination"],
+    }
 
 
 def list_finance(db: Session, page: int, page_size: int, type_=None, category=None):
@@ -195,17 +203,25 @@ def list_finance(db: Session, page: int, page_size: int, type_=None, category=No
     if category:
         q = q.filter(FinanceRecord.category == category)
     result = _paginate(q.order_by(FinanceRecord.id.desc()), page, page_size)
-    return {"data": [ser_finance(f) for f in result["rows"]], "pagination": result["pagination"]}
+    return {
+        "data": [ser_finance(f) for f in result["rows"]],
+        "pagination": result["pagination"],
+    }
 
 
-def list_notifications(db: Session, page: int, page_size: int, ntype=None, is_read=None):
+def list_notifications(
+    db: Session, page: int, page_size: int, ntype=None, is_read=None
+):
     q = db.query(Notification)
     if ntype:
         q = q.filter(Notification.type == ntype)
     if is_read is not None:
         q = q.filter(Notification.is_read == is_read)
     result = _paginate(q.order_by(Notification.id.desc()), page, page_size)
-    return {"data": [ser_notification(n) for n in result["rows"]], "pagination": result["pagination"]}
+    return {
+        "data": [ser_notification(n) for n in result["rows"]],
+        "pagination": result["pagination"],
+    }
 
 
 def create_customer(db: Session, payload) -> Dict[str, Any]:
@@ -236,7 +252,9 @@ def update_customer(db: Session, customer_id: int, payload) -> Dict[str, Any]:
     if payload.age_group is not None:
         c.age_group = _enum(AgeGroupEnum, payload.age_group, "age_group")
     if payload.customer_type is not None:
-        c.customer_type = _enum(CustomerTypeEnum, payload.customer_type, "customer_type")
+        c.customer_type = _enum(
+            CustomerTypeEnum, payload.customer_type, "customer_type"
+        )
     db.commit()
     db.refresh(c)
     return ser_customer(c)
@@ -261,7 +279,9 @@ def create_product(db: Session, payload) -> Dict[str, Any]:
         price=_money(payload.price, "price"),
         cost=_money(payload.cost, "cost"),
         stock=int(payload.stock),
-        low_stock_threshold=int(payload.low_stock_threshold or LOW_STOCK_DEFAULT_THRESHOLD),
+        low_stock_threshold=int(
+            payload.low_stock_threshold or LOW_STOCK_DEFAULT_THRESHOLD
+        ),
         status=_enum(ProductStatusEnum, payload.status, "status"),
         created_at=_parse_dt(payload.created_at),
     )
@@ -309,7 +329,9 @@ def _order_no(db: Session, created_at: datetime) -> str:
     return f"ORD{created_at.strftime('%Y%m%d')}{seq:06d}"
 
 
-def _add_finance(db: Session, type_, category, amount, order_id: Optional[int], recorded_at: datetime) -> Dict[str, Any]:
+def _add_finance(
+    db: Session, type_, category, amount, order_id: Optional[int], recorded_at: datetime
+) -> Dict[str, Any]:
     f = FinanceRecord(
         type=type_,
         category=category,
@@ -322,14 +344,20 @@ def _add_finance(db: Session, type_, category, amount, order_id: Optional[int], 
     return ser_finance(f)
 
 
-def _add_notification(db: Session, ntype, title: str, content: str, created_at: datetime) -> Dict[str, Any]:
-    n = Notification(type=ntype, title=title, content=content, is_read=False, created_at=created_at)
+def _add_notification(
+    db: Session, ntype, title: str, content: str, created_at: datetime
+) -> Dict[str, Any]:
+    n = Notification(
+        type=ntype, title=title, content=content, is_read=False, created_at=created_at
+    )
     db.add(n)
     db.flush()
     return ser_notification(n)
 
 
-def _maybe_order_notification(db: Session, order: Order, created_at: datetime) -> Optional[Dict[str, Any]]:
+def _maybe_order_notification(
+    db: Session, order: Order, created_at: datetime
+) -> Optional[Dict[str, Any]]:
     if (order.total_amount or Decimal("0")) < LARGE_ORDER_THRESHOLD:
         return None
     return _add_notification(
@@ -356,7 +384,16 @@ def create_order(db: Session, payload) -> Dict[str, Any]:
         total_amount=Decimal("0.00"),
         status=status,
         created_at=created_at,
-        paid_at=created_at if status in {OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed} else None,
+        paid_at=(
+            created_at
+            if status
+            in {
+                OrderStatusEnum.paid,
+                OrderStatusEnum.shipped,
+                OrderStatusEnum.completed,
+            }
+            else None
+        ),
         completed_at=created_at if status == OrderStatusEnum.completed else None,
     )
     db.add(order)
@@ -374,46 +411,103 @@ def create_order(db: Session, payload) -> Dict[str, Any]:
             raise IngestError("Quantity must be positive")
         if product.stock < qty:
             raise IngestError(f"Insufficient stock for product {product.id}")
-        unit_price = _money(item.unit_price if item.unit_price is not None else product.price, "unit_price")
+        unit_price = _money(
+            item.unit_price if item.unit_price is not None else product.price,
+            "unit_price",
+        )
         subtotal = (unit_price * qty).quantize(Decimal("0.01"))
         product.stock -= qty
         total += subtotal
         cost_total += (Decimal(product.cost) * qty).quantize(Decimal("0.01"))
-        db.add(OrderItem(order_id=order.id, product_id=product.id, quantity=qty, unit_price=unit_price, subtotal=subtotal))
+        db.add(
+            OrderItem(
+                order_id=order.id,
+                product_id=product.id,
+                quantity=qty,
+                unit_price=unit_price,
+                subtotal=subtotal,
+            )
+        )
         if product.stock <= product.low_stock_threshold:
-            stock_alerts.append(_add_notification(
-                db,
-                NotificationTypeEnum.stock_alert,
-                "库存预警",
-                f"{product.product_name} 当前库存 {product.stock},低于阈值 {product.low_stock_threshold}",
-                created_at,
-            ))
+            stock_alerts.append(
+                _add_notification(
+                    db,
+                    NotificationTypeEnum.stock_alert,
+                    "库存预警",
+                    f"{product.product_name} 当前库存 {product.stock},低于阈值 {product.low_stock_threshold}",
+                    created_at,
+                )
+            )
 
     order.total_amount = total
     finance: List[Dict[str, Any]] = []
-    if status in {OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed}:
+    if status in {
+        OrderStatusEnum.paid,
+        OrderStatusEnum.shipped,
+        OrderStatusEnum.completed,
+    }:
         finance.extend(_record_order_finance(db, order, cost_total, created_at))
 
     order_notif = _maybe_order_notification(db, order, created_at)
     notifications = stock_alerts + ([order_notif] if order_notif else [])
     db.commit()
     db.refresh(order)
-    return {"row": ser_order(order), "items": [ser_order_item(i) for i in order.order_items], "finance": finance, "notifs": notifications}
+    return {
+        "row": ser_order(order),
+        "items": [ser_order_item(i) for i in order.order_items],
+        "finance": finance,
+        "notifs": notifications,
+    }
 
 
-def _record_order_finance(db: Session, order: Order, cost_total: Optional[Decimal] = None, recorded_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
+def _record_order_finance(
+    db: Session,
+    order: Order,
+    cost_total: Optional[Decimal] = None,
+    recorded_at: Optional[datetime] = None,
+) -> List[Dict[str, Any]]:
     recorded_at = recorded_at or datetime.utcnow()
-    existing = db.query(FinanceRecord).filter(FinanceRecord.related_order_id == order.id).count()
+    existing = (
+        db.query(FinanceRecord)
+        .filter(FinanceRecord.related_order_id == order.id)
+        .count()
+    )
     if existing:
         return []
     if cost_total is None:
-        cost_total = db.query(func.coalesce(func.sum(OrderItem.quantity * Product.cost), 0)).join(Product, Product.id == OrderItem.product_id).filter(OrderItem.order_id == order.id).scalar()
+        cost_total = (
+            db.query(func.coalesce(func.sum(OrderItem.quantity * Product.cost), 0))
+            .join(Product, Product.id == OrderItem.product_id)
+            .filter(OrderItem.order_id == order.id)
+            .scalar()
+        )
         cost_total = Decimal(str(cost_total or 0)).quantize(Decimal("0.01"))
     logistics = Decimal("15.00")
     return [
-        _add_finance(db, FinanceTypeEnum.income, FinanceCategoryEnum.sales_income, order.total_amount, order.id, recorded_at),
-        _add_finance(db, FinanceTypeEnum.expense, FinanceCategoryEnum.product_cost, cost_total, order.id, recorded_at),
-        _add_finance(db, FinanceTypeEnum.expense, FinanceCategoryEnum.logistics_cost, logistics, order.id, recorded_at),
+        _add_finance(
+            db,
+            FinanceTypeEnum.income,
+            FinanceCategoryEnum.sales_income,
+            order.total_amount,
+            order.id,
+            recorded_at,
+        ),
+        _add_finance(
+            db,
+            FinanceTypeEnum.expense,
+            FinanceCategoryEnum.product_cost,
+            cost_total,
+            order.id,
+            recorded_at,
+        ),
+        _add_finance(
+            db,
+            FinanceTypeEnum.expense,
+            FinanceCategoryEnum.logistics_cost,
+            logistics,
+            order.id,
+            recorded_at,
+        ),
     ]
 
 
@@ -429,18 +523,34 @@ def update_order_status(db: Session, order_id: int, status: str) -> Dict[str, An
         OrderStatusEnum.completed: set(),
         OrderStatusEnum.cancelled: set(),
     }
-    if new_status != order.status and new_status not in allowed.get(order.status, set()):
+    if new_status != order.status and new_status not in allowed.get(
+        order.status, set()
+    ):
         raise IngestError("Invalid order status transition")
     now = datetime.utcnow()
     order.status = new_status
-    if new_status in {OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed} and not order.paid_at:
+    if (
+        new_status
+        in {OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed}
+        and not order.paid_at
+    ):
         order.paid_at = now
     if new_status == OrderStatusEnum.completed and not order.completed_at:
         order.completed_at = now
-    finance_added = _record_order_finance(db, order, recorded_at=now) if new_status in {OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed} else []
+    finance_added = (
+        _record_order_finance(db, order, recorded_at=now)
+        if new_status
+        in {OrderStatusEnum.paid, OrderStatusEnum.shipped, OrderStatusEnum.completed}
+        else []
+    )
     db.commit()
     db.refresh(order)
-    return {"row": ser_order(order), "finance_added": finance_added, "finance_removed": [], "notif": None}
+    return {
+        "row": ser_order(order),
+        "finance_added": finance_added,
+        "finance_removed": [],
+        "notif": None,
+    }
 
 
 def delete_order(db: Session, order_id: int) -> Dict[str, Any]:

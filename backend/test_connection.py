@@ -8,8 +8,8 @@ try:
         port=3306,
         user="root",
         password="20041122",
-        charset='utf8mb4',
-        connect_timeout=5
+        charset="utf8mb4",
+        connect_timeout=5,
     )
     print("SUCCESS! Connected to MySQL")
 
@@ -32,8 +32,8 @@ except Exception as e:
             port=3306,
             user="root",
             password="20041122",
-            charset='utf8mb4',
-            connect_timeout=5
+            charset="utf8mb4",
+            connect_timeout=5,
         )
         print("SUCCESS with localhost!")
         connection.close()

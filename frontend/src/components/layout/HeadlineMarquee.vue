@@ -51,16 +51,16 @@ const realtime = useRealtimeStore()
 const router = useRouter()
 
 const NOTIF_ICON: Record<string, string> = {
-  stock_alert:  'alertCircle',
+  stock_alert: 'alertCircle',
   refund_alert: 'finance',
-  order_alert:  'orders',
-  sales_alert:  'trendUp',
+  order_alert: 'orders',
+  sales_alert: 'trendUp',
 }
 const NOTIF_COLOR: Record<string, string> = {
-  stock_alert:  '#f59e0b',
+  stock_alert: '#f59e0b',
   refund_alert: '#ef4444',
-  order_alert:  '#3b82f6',
-  sales_alert:  'var(--green-dark)',
+  order_alert: '#3b82f6',
+  sales_alert: 'var(--green-dark)',
 }
 
 const entries = ref<Entry[]>([])
@@ -84,7 +84,6 @@ const renderedEntries = computed<Entry[]>(() => {
 
 async function loadEntries(): Promise<void> {
   try {
-    // admin 优先未读;有未读就只显示未读
     if (auth.isAdmin) {
       const resp = await api.getNotifications(1, 5, false)
       const list: Notif[] = resp?.data ?? []
@@ -99,7 +98,6 @@ async function loadEntries(): Promise<void> {
         return
       }
     }
-    // 无未读 / employee → 热卖榜
     const hotResp = await api.getProductHighlights(7, 8)
     const hot: Highlight[] = hotResp?.data ?? []
     entries.value = hot.map((p, i) => ({
@@ -118,7 +116,6 @@ let pollTimer: number | undefined
 
 onMounted(() => {
   loadEntries()
-  // 兜底 5 分钟刷一次(防止 admin 在自动化关闭时榜单老化)
   pollTimer = window.setInterval(loadEntries, 5 * 60 * 1000)
 })
 
@@ -126,7 +123,6 @@ onBeforeUnmount(() => {
   if (pollTimer !== undefined) window.clearInterval(pollTimer)
 })
 
-// SSE 触发:notification 计数变化 → 重拉未读;order 计数变化 → 热卖榜可能变
 watch(() => realtime.counters.notification, loadEntries)
 watch(() => realtime.counters.order, loadEntries)
 </script>
@@ -143,6 +139,7 @@ watch(() => realtime.counters.order, loadEntries)
   display: flex;
   align-items: center;
 }
+
 .marquee-track {
   display: flex;
   gap: 32px;
@@ -151,9 +148,11 @@ watch(() => realtime.counters.order, loadEntries)
   animation: m-scroll linear infinite;
   will-change: transform;
 }
+
 .marquee:hover .marquee-track {
   animation-play-state: paused;
 }
+
 .m-item {
   display: inline-flex;
   align-items: center;
@@ -164,16 +163,20 @@ watch(() => realtime.counters.order, loadEntries)
   cursor: pointer;
   transition: color 0.15s;
 }
+
 .m-item:hover {
   color: var(--green-dark);
 }
+
 .m-text {
   line-height: 1;
 }
+
 @keyframes m-scroll {
   0% {
     transform: translateX(0);
   }
+
   100% {
     transform: translateX(-50%);
   }

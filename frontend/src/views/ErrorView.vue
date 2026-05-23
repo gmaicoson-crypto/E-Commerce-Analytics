@@ -8,14 +8,56 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{ code?: number }>(), { code: 404 })
+withDefaults(
+  defineProps<{ code?: number }>(),
+  { code: 404 },
+)
 </script>
 
 <style scoped>
-.error-page { width:100vw;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg); }
-.err-code   { font-size:96px;font-weight:900;color:var(--green);line-height:1; }
-.err-title  { font-size:24px;font-weight:800;color:var(--text1);margin:12px 0 8px; }
-.err-desc   { font-size:14px;color:var(--text2);margin-bottom:28px; }
-.back-btn   { padding:12px 32px;border-radius:12px;background:var(--green);color:#fff;font-size:15px;font-weight:700;border:none;cursor:pointer;transition:background .2s; }
-.back-btn:hover { background:var(--green-dark); }
+.error-page {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.err-code {
+  font-size: 96px;
+  font-weight: 900;
+  color: var(--green);
+  line-height: 1;
+}
+
+.err-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text1);
+  margin: 12px 0 8px;
+}
+
+.err-desc {
+  font-size: 14px;
+  color: var(--text2);
+  margin-bottom: 28px;
+}
+
+.back-btn {
+  padding: 12px 32px;
+  border-radius: 12px;
+  background: var(--green);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.back-btn:hover {
+  background: var(--green-dark);
+}
 </style>

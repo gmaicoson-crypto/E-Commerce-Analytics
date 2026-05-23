@@ -55,28 +55,31 @@ def _category(value: str) -> CategoryEnum:
     try:
         return CategoryEnum(value)
     except ValueError:
-        raise HTTPException(status_code=400, detail={"message": f"Invalid category: {value}"})
+        raise HTTPException(
+            status_code=400, detail={"message": f"Invalid category: {value}"}
+        )
 
 
 def _status(value: str) -> ProductStatusEnum:
     try:
         return ProductStatusEnum(value)
     except ValueError:
-        raise HTTPException(status_code=400, detail={"message": f"Invalid status: {value}"})
+        raise HTTPException(
+            status_code=400, detail={"message": f"Invalid status: {value}"}
+        )
 
 
 def _publish_product(action: str, payload: dict) -> None:
     bus.publish("product", action, payload)
 
 
-@router.get("/manage/list", response_model=dict)
+@router.get("/manage/list", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_list(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     category: str | None = None,
     status: str | None = None,
     keyword: str | None = None,
-    current_user=Depends(check_module_permission("product_analysis")),
     db: Session = Depends(get_db),
 ):
     q = db.query(Product)
@@ -93,21 +96,22 @@ async def product_manage_list(
         .limit(page_size)
         .all()
     )
-    return success_response({
-        "data": [_product_row(p) for p in rows],
-        "pagination": {
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "total_pages": (total + page_size - 1) // page_size if total else 0,
-        },
-    })
+    return success_response(
+        {
+            "data": [_product_row(p) for p in rows],
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size if total else 0,
+            },
+        }
+    )
 
 
-@router.post("/manage", response_model=dict)
+@router.post("/manage", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_create(
     body: ProductCreate,
-    current_user=Depends(check_module_permission("product_analysis")),
     db: Session = Depends(get_db),
 ):
     product = Product(
@@ -128,11 +132,10 @@ async def product_manage_create(
     return success_response(row)
 
 
-@router.patch("/manage/{product_id}", response_model=dict)
+@router.patch("/manage/{product_id}", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_update(
     product_id: int,
     body: ProductUpdate,
-    current_user=Depends(check_module_permission("product_analysis")),
     db: Session = Depends(get_db),
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
@@ -161,17 +164,18 @@ async def product_manage_update(
     return success_response(row)
 
 
-@router.delete("/manage/{product_id}", response_model=dict)
+@router.delete("/manage/{product_id}", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_delete(
     product_id: int,
-    current_user=Depends(check_module_permission("product_analysis")),
     db: Session = Depends(get_db),
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail={"message": "Product not found"})
     if db.query(OrderItem).filter(OrderItem.product_id == product_id).count() > 0:
-        raise HTTPException(status_code=400, detail={"message": "Product is used by orders"})
+        raise HTTPException(
+            status_code=400, detail={"message": "Product is used by orders"}
+        )
     row = _product_row(product)
     db.delete(product)
     db.commit()
@@ -179,39 +183,35 @@ async def product_manage_delete(
     return success_response(row)
 
 
-@router.get("/overview", response_model=dict)
-async def products_overview(
-    current_user=Depends(check_module_permission("product_analysis")),
-    db: Session = Depends(get_db)
-):
+@router.get("/overview", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
+async def products_overview(db: Session = Depends(get_db)):
     """Get product overview statistics."""
     total_products = db.query(Product).count()
     on_sale = db.query(Product).filter(Product.status == "on_sale").count()
     off_sale = db.query(Product).filter(Product.status == "off_sale").count()
-    low_stock = db.query(Product).filter(
-        Product.stock < Product.low_stock_threshold
-    ).count()
+    low_stock = (
+        db.query(Product).filter(Product.stock < Product.low_stock_threshold).count()
+    )
 
     total_stock = db.query(func.sum(Product.stock)).scalar() or 0
-    total_value = db.query(
-        func.sum(Product.stock * Product.price)
-    ).scalar() or Decimal(0)
+    total_value = db.query(func.sum(Product.stock * Product.price)).scalar() or Decimal(
+        0
+    )
 
-    return success_response({
-        "total_products": total_products,
-        "on_sale": on_sale,
-        "off_sale": off_sale,
-        "low_stock_count": low_stock,
-        "total_stock": int(total_stock),
-        "total_inventory_value": float(total_value)
-    })
+    return success_response(
+        {
+            "total_products": total_products,
+            "on_sale": on_sale,
+            "off_sale": off_sale,
+            "low_stock_count": low_stock,
+            "total_stock": int(total_stock),
+            "total_inventory_value": float(total_value),
+        }
+    )
 
 
-@router.get("/by-category", response_model=dict)
-async def products_by_category(
-    current_user=Depends(check_module_permission("product_analysis")),
-    db: Session = Depends(get_db)
-):
+@router.get("/by-category", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
+async def products_by_category(db: Session = Depends(get_db)):
     """Get products grouped by category - 单条 SQL GROUP BY。"""
     from sqlalchemy import case
 
@@ -231,7 +231,9 @@ async def products_by_category(
 
     data = [
         {
-            "category": r.category.value if hasattr(r.category, "value") else r.category,
+            "category": (
+                r.category.value if hasattr(r.category, "value") else r.category
+            ),
             "count": int(r.count),
             "on_sale": int(r.on_sale or 0),
             "avg_price": float(r.avg_price),
@@ -244,16 +246,19 @@ async def products_by_category(
     return success_response(data)
 
 
-@router.get("/low-stock", response_model=dict)
+@router.get("/low-stock", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def low_stock_products(
     limit: int = Query(20, ge=1, le=100),
-    current_user=Depends(check_module_permission("product_analysis")),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Get products with low stock."""
-    products = db.query(Product).filter(
-        Product.stock < Product.low_stock_threshold
-    ).order_by(Product.stock.asc()).limit(limit).all()
+    products = (
+        db.query(Product)
+        .filter(Product.stock < Product.low_stock_threshold)
+        .order_by(Product.stock.asc())
+        .limit(limit)
+        .all()
+    )
 
     data = [
         {
@@ -263,22 +268,18 @@ async def low_stock_products(
             "stock": p.stock,
             "low_stock_threshold": p.low_stock_threshold,
             "price": float(p.price),
-            "status": p.status
+            "status": p.status,
         }
         for p in products
     ]
 
-    return success_response({
-        "count": len(data),
-        "data": data
-    })
+    return success_response({"count": len(data), "data": data})
 
 
-@router.get("/highlights", response_model=dict)
+@router.get("/highlights", response_model=dict, dependencies=[Depends(get_current_user)])
 async def product_highlights(
     days: int = Query(7, ge=1, le=30),
     limit: int = Query(8, ge=1, le=20),
-    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """横幅滚动用的轻量热卖榜 —— 任何登录用户可见,不查模块权限。"""
@@ -303,27 +304,30 @@ async def product_highlights(
         .limit(limit)
         .all()
     )
-    return success_response({
-        "data": [
-            {
-                "product_name": r.product_name,
-                "category": r.category.value if hasattr(r.category, "value") else r.category,
-                "quantity_sold": int(r.quantity_sold),
-                "sales": float(r.sales),
-            }
-            for r in rows
-        ]
-    })
+    return success_response(
+        {
+            "data": [
+                {
+                    "product_name": r.product_name,
+                    "category": (
+                        r.category.value if hasattr(r.category, "value") else r.category
+                    ),
+                    "quantity_sold": int(r.quantity_sold),
+                    "sales": float(r.sales),
+                }
+                for r in rows
+            ]
+        }
+    )
 
 
-@router.get("/performance", response_model=dict)
+@router.get("/performance", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_performance(
     date_range: str = Query("last_7_days"),
     start_date: str = Query(None),
     end_date: str = Query(None),
     limit: int = Query(20, ge=1, le=100),
-    current_user=Depends(check_module_permission("product_analysis")),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Get product sales performance - 单条 SQL GROUP BY product_id。"""
     start, end = parse_date_range(date_range, start_date, end_date)
@@ -336,7 +340,9 @@ async def product_performance(
             Product.price.label("price"),
             func.coalesce(func.sum(OrderItem.quantity), 0).label("quantity_sold"),
             func.coalesce(func.sum(OrderItem.subtotal), 0).label("sales"),
-            func.coalesce(func.sum(OrderItem.subtotal - Product.cost * OrderItem.quantity), 0).label("profit"),
+            func.coalesce(
+                func.sum(OrderItem.subtotal - Product.cost * OrderItem.quantity), 0
+            ).label("profit"),
         )
         .join(OrderItem, OrderItem.product_id == Product.id)
         .join(Order, Order.id == OrderItem.order_id)
@@ -355,7 +361,9 @@ async def product_performance(
         {
             "product_id": int(r.product_id),
             "product_name": r.product_name,
-            "category": r.category.value if hasattr(r.category, "value") else r.category,
+            "category": (
+                r.category.value if hasattr(r.category, "value") else r.category
+            ),
             "price": float(r.price),
             "quantity_sold": int(r.quantity_sold),
             "sales": float(r.sales),
@@ -365,17 +373,18 @@ async def product_performance(
         for r in rows
     ]
 
-    return success_response({
-        "period": {"start": start.isoformat(), "end": end.isoformat()},
-        "data": data,
-    })
+    return success_response(
+        {
+            "period": {"start": start.isoformat(), "end": end.isoformat()},
+            "data": data,
+        }
+    )
 
 
-@router.get("/top-trend", response_model=dict)
+@router.get("/top-trend", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def top_products_trend(
     days: int = Query(30, ge=1, le=90),
     limit: int = Query(5, ge=1, le=20),
-    current_user=Depends(check_module_permission("product_analysis")),
     db: Session = Depends(get_db),
 ):
     """TOP-N 商品的近 N 天**真实**日销量曲线(含今天)。
@@ -448,27 +457,30 @@ async def top_products_trend(
     for pid in top_ids:
         p = products.get(pid)
         daily_map = by_pid_day.get(pid, {})
-        products_out.append({
-            "product_id": pid,
-            "product_name": p.product_name if p else f"Product {pid}",
-            "category": (p.category.value if p and p.category else None),
-            "total_qty": qty_map.get(pid, 0),
-            "daily": [daily_map.get(d, 0) for d in labels],
-        })
+        products_out.append(
+            {
+                "product_id": pid,
+                "product_name": p.product_name if p else f"Product {pid}",
+                "category": (p.category.value if p and p.category else None),
+                "total_qty": qty_map.get(pid, 0),
+                "daily": [daily_map.get(d, 0) for d in labels],
+            }
+        )
 
-    return success_response({
-        "period_days": days,
-        "dates": labels,
-        "products": products_out,
-    })
+    return success_response(
+        {
+            "period_days": days,
+            "dates": labels,
+            "products": products_out,
+        }
+    )
 
 
-@router.get("/category-daily-top", response_model=dict)
+@router.get("/category-daily-top", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def category_daily_top(
     date_str: str = Query(None, alias="date"),  # 'YYYY-MM-DD',缺省 = 今天
-    category: str = Query(None),                # 中文品类名:服装/电子/食品/家居/美妆
+    category: str = Query(None),  # 中文品类名:服装/电子/食品/家居/美妆
     limit: int = Query(5, ge=1, le=20),
-    current_user=Depends(check_module_permission("product_analysis")),
     db: Session = Depends(get_db),
 ):
     """指定日期 + 指定品类的当日 TOP-N 商品销量(按销售额排序)。"""
@@ -509,46 +521,59 @@ async def category_daily_top(
         .all()
     )
 
-    products = {
-        p.id: p for p in db.query(Product).filter(Product.id.in_([r.pid for r in rows])).all()
-    } if rows else {}
+    products = (
+        {
+            p.id: p
+            for p in db.query(Product)
+            .filter(Product.id.in_([r.pid for r in rows]))
+            .all()
+        }
+        if rows
+        else {}
+    )
 
     data = []
     for r in rows:
         p = products.get(r.pid)
-        data.append({
-            "product_id": r.pid,
-            "product_name": p.product_name if p else f"Product {r.pid}",
-            "category": (p.category.value if p and p.category else None),
-            "quantity": int(r.qty or 0),
-            "sales": float(r.sales or 0),
-        })
+        data.append(
+            {
+                "product_id": r.pid,
+                "product_name": p.product_name if p else f"Product {r.pid}",
+                "category": (p.category.value if p and p.category else None),
+                "quantity": int(r.qty or 0),
+                "sales": float(r.sales or 0),
+            }
+        )
 
-    return success_response({
-        "date": target.isoformat(),
-        "category": category,
-        "data": data,
-    })
+    return success_response(
+        {
+            "date": target.isoformat(),
+            "category": category,
+            "data": data,
+        }
+    )
 
 
-@router.get("/profit-analysis", response_model=dict)
+@router.get("/profit-analysis", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def profit_analysis(
     date_range: str = Query("last_30_days"),
     start_date: str = Query(None),
     end_date: str = Query(None),
-    current_user=Depends(check_module_permission("product_analysis")),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Get profit analysis by category."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
-    items = db.query(OrderItem, Order).join(
-        Order, OrderItem.order_id == Order.id
-    ).filter(
-        Order.created_at >= datetime.combine(start, datetime.min.time()),
-        Order.created_at <= datetime.combine(end, datetime.max.time()),
-        Order.status.in_(["paid", "shipped", "completed"])
-    ).all()
+    items = (
+        db.query(OrderItem, Order)
+        .join(Order, OrderItem.order_id == Order.id)
+        .filter(
+            Order.created_at >= datetime.combine(start, datetime.min.time()),
+            Order.created_at <= datetime.combine(end, datetime.max.time()),
+            Order.status.in_(["paid", "shipped", "completed"]),
+        )
+        .all()
+    )
 
     category_stats = {}
     for item, order in items:
@@ -557,7 +582,7 @@ async def profit_analysis(
             category_stats[cat] = {
                 "revenue": Decimal(0),
                 "cost": Decimal(0),
-                "quantity": 0
+                "quantity": 0,
             }
         category_stats[cat]["revenue"] += item.subtotal
         category_stats[cat]["cost"] += item.product.cost * item.quantity
@@ -567,19 +592,20 @@ async def profit_analysis(
     for cat, stats in category_stats.items():
         profit = stats["revenue"] - stats["cost"]
         margin = (profit / stats["revenue"] * 100) if stats["revenue"] > 0 else 0
-        data.append({
-            "category": cat,
-            "revenue": float(stats["revenue"]),
-            "cost": float(stats["cost"]),
-            "profit": float(profit),
-            "profit_margin": round(float(margin), 2),
-            "quantity": stats["quantity"]
-        })
+        data.append(
+            {
+                "category": cat,
+                "revenue": float(stats["revenue"]),
+                "cost": float(stats["cost"]),
+                "profit": float(profit),
+                "profit_margin": round(float(margin), 2),
+                "quantity": stats["quantity"],
+            }
+        )
 
-    return success_response({
-        "period": {
-            "start": start.isoformat(),
-            "end": end.isoformat()
-        },
-        "data": sorted(data, key=lambda x: x["profit"], reverse=True)
-    })
+    return success_response(
+        {
+            "period": {"start": start.isoformat(), "end": end.isoformat()},
+            "data": sorted(data, key=lambda x: x["profit"], reverse=True),
+        }
+    )

@@ -3,6 +3,7 @@
 This module owns demo/random data generation. It never writes ecommerce_db
 directly; generated payloads are sent to backend ingest APIs.
 """
+
 from __future__ import annotations
 
 import random
@@ -12,12 +13,41 @@ from typing import Any, Dict, List
 
 import backend_client as backend
 
-
 PROVINCES = [
-    "北京", "上海", "天津", "重庆", "河北", "山西", "辽宁", "吉林", "黑龙江",
-    "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南",
-    "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "台湾",
-    "内蒙古", "广西", "西藏", "宁夏", "新疆", "香港", "澳门",
+    "北京",
+    "上海",
+    "天津",
+    "重庆",
+    "河北",
+    "山西",
+    "辽宁",
+    "吉林",
+    "黑龙江",
+    "江苏",
+    "浙江",
+    "安徽",
+    "福建",
+    "江西",
+    "山东",
+    "河南",
+    "湖北",
+    "湖南",
+    "广东",
+    "海南",
+    "四川",
+    "贵州",
+    "云南",
+    "陕西",
+    "甘肃",
+    "青海",
+    "台湾",
+    "内蒙古",
+    "广西",
+    "西藏",
+    "宁夏",
+    "新疆",
+    "香港",
+    "澳门",
 ]
 CATEGORIES = ["服装", "电子", "食品", "家居", "美妆"]
 GENDERS = ["male", "female"]
@@ -54,12 +84,29 @@ def sweep_stale_stock_alerts() -> List[int]:
     return []
 
 
-def list_customers(page=1, page_size=20, *, gender=None, age_group=None, province=None, customer_type=None):
-    return backend.list_customers(page=page, page_size=page_size, gender=gender, age_group=age_group, province=province, customer_type=customer_type)
+def list_customers(
+    page=1,
+    page_size=20,
+    *,
+    gender=None,
+    age_group=None,
+    province=None,
+    customer_type=None,
+):
+    return backend.list_customers(
+        page=page,
+        page_size=page_size,
+        gender=gender,
+        age_group=age_group,
+        province=province,
+        customer_type=customer_type,
+    )
 
 
 def list_products(page=1, page_size=20, *, category=None, status=None):
-    return backend.list_products(page=page, page_size=page_size, category=category, status=status)
+    return backend.list_products(
+        page=page, page_size=page_size, category=category, status=status
+    )
 
 
 def list_orders(page=1, page_size=20, *, status=None):
@@ -67,14 +114,20 @@ def list_orders(page=1, page_size=20, *, status=None):
 
 
 def list_finance_records(page=1, page_size=20, *, type_=None, category=None):
-    return backend.list_finance(page=page, page_size=page_size, type=type_, category=category)
+    return backend.list_finance(
+        page=page, page_size=page_size, type=type_, category=category
+    )
 
 
 def list_notifications(page=1, page_size=20, *, ntype=None, is_read=None):
-    return backend.list_notifications(page=page, page_size=page_size, ntype=ntype, is_read=is_read)
+    return backend.list_notifications(
+        page=page, page_size=page_size, ntype=ntype, is_read=is_read
+    )
 
 
-def create_customer(*, gender=None, age_group=None, province=None, customer_type=None) -> Dict[str, Any]:
+def create_customer(
+    *, gender=None, age_group=None, province=None, customer_type=None
+) -> Dict[str, Any]:
     seed = random.randint(10000, 99999)
     payload = {
         "username": f"customer_{seed}",
@@ -99,11 +152,17 @@ def delete_customers(ids: List[int]):
     return backend.delete_customers(ids)
 
 
-def create_product(*, category=None, status=None, price=None, cost=None, stock=None) -> Dict[str, Any]:
+def create_product(
+    *, category=None, status=None, price=None, cost=None, stock=None
+) -> Dict[str, Any]:
     cat = _pick(CATEGORIES, category)
     seed = random.randint(10000, 99999)
     product_price = _money(price, 10, 500)
-    product_cost = float(Decimal(str(cost if cost is not None else product_price * random.uniform(0.35, 0.7))).quantize(Decimal("0.01")))
+    product_cost = float(
+        Decimal(
+            str(cost if cost is not None else product_price * random.uniform(0.35, 0.7))
+        ).quantize(Decimal("0.01"))
+    )
     payload = {
         "product_name": f"{cat}商品{seed}",
         "category": cat,
@@ -143,7 +202,9 @@ def _available_customers():
 
 
 def _available_products():
-    return backend.list_products(page=1, page_size=100, status="on_sale").get("data") or []
+    return (
+        backend.list_products(page=1, page_size=100, status="on_sale").get("data") or []
+    )
 
 
 def create_order(*, status=None, customer_id=None):
@@ -151,7 +212,11 @@ def create_order(*, status=None, customer_id=None):
     products = _available_products()
     if not customers or not products:
         return None
-    customer = next((c for c in customers if c["id"] == customer_id), None) if customer_id else random.choice(customers)
+    customer = (
+        next((c for c in customers if c["id"] == customer_id), None)
+        if customer_id
+        else random.choice(customers)
+    )
     if not customer:
         return None
     chosen = random.sample(products, k=min(len(products), random.randint(1, 3)))
@@ -179,10 +244,18 @@ def delete_orders(ids: List[int]):
 
 def create_finance_record(*, type_=None, category=None, amount=None) -> Dict[str, Any]:
     finance_type = _pick(FINANCE_TYPES, type_)
-    valid_categories = ["sales_income"] if finance_type == "income" else ["product_cost", "logistics_cost", "ad_cost"]
+    valid_categories = (
+        ["sales_income"]
+        if finance_type == "income"
+        else ["product_cost", "logistics_cost", "ad_cost"]
+    )
     payload = {
         "type": finance_type,
-        "category": category if category in valid_categories else random.choice(valid_categories),
+        "category": (
+            category
+            if category in valid_categories
+            else random.choice(valid_categories)
+        ),
         "amount": _money(amount, 100, 10000),
         "recorded_at": _ts(),
     }
@@ -201,7 +274,12 @@ def create_notification(*, ntype=None, title=None, content=None) -> Dict[str, An
     notification_type = _pick(NOTIF_TYPES, ntype)
     payload = {
         "ntype": notification_type,
-        "title": title or {"stock_alert": "库存预警", "order_alert": "异常订单", "sales_alert": "销售波动"}[notification_type],
+        "title": title
+        or {
+            "stock_alert": "库存预警",
+            "order_alert": "异常订单",
+            "sales_alert": "销售波动",
+        }[notification_type],
         "content": content or "模拟平台产生的业务提醒",
         "created_at": _ts(),
     }

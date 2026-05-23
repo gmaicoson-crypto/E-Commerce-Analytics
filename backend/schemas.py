@@ -2,9 +2,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Generic, TypeVar
 from datetime import datetime
 
-
 # Generic Response Wrapper
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class APIResponse(BaseModel, Generic[T]):

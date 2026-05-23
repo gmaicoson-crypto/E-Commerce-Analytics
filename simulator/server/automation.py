@@ -4,6 +4,7 @@ The simulator behaves like an external commerce platform: it generates events
 and sends them to backend ingest APIs. It does not write the project database
 directly.
 """
+
 from __future__ import annotations
 
 import asyncio

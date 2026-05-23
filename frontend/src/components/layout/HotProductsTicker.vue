@@ -40,7 +40,12 @@ const index = ref(0)
 const paused = ref(false)
 const realtime = useRealtimeStore()
 
-const FALLBACK: Highlight = { product_name: '', category: '', quantity_sold: 0, sales: 0 }
+const FALLBACK: Highlight = {
+  product_name: '',
+  category: '',
+  quantity_sold: 0,
+  sales: 0,
+}
 const current = computed<Highlight>(() => items.value[index.value] ?? FALLBACK)
 
 async function load(): Promise<void> {
@@ -59,7 +64,7 @@ let pollTimer: number | undefined
 onMounted(() => {
   load()
   flipTimer = window.setInterval(() => {
-    if (paused.value) return            // hover 时暂停翻页
+    if (paused.value) return
     if (items.value.length > 1) {
       index.value = (index.value + 1) % items.value.length
     }
@@ -92,9 +97,11 @@ watch(() => realtime.counters.order, load)
   cursor: pointer;
   transition: color 0.15s;
 }
+
 .ticker:hover .ticker-text {
   color: var(--green-dark);
 }
+
 .ticker-label {
   font-size: 11px;
   font-weight: 800;
@@ -105,6 +112,7 @@ watch(() => realtime.counters.order, load)
   background: rgba(34, 197, 94, 0.18);
   letter-spacing: 0.5px;
 }
+
 .ticker-stage {
   position: relative;
   flex: 1;
@@ -112,6 +120,7 @@ watch(() => realtime.counters.order, load)
   overflow: hidden;
   min-width: 0;
 }
+
 .ticker-row {
   position: absolute;
   inset: 0;
@@ -124,30 +133,37 @@ watch(() => realtime.counters.order, load)
   white-space: nowrap;
   min-width: 0;
 }
+
 .ticker-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .cat {
   color: var(--text3);
   font-weight: 500;
 }
+
 .flip-enter-active,
 .flip-leave-active {
   transition: transform 0.5s ease, opacity 0.5s ease;
 }
+
 .flip-enter-from {
   transform: translateY(100%);
   opacity: 0;
 }
+
 .flip-enter-to {
   transform: translateY(0);
   opacity: 1;
 }
+
 .flip-leave-from {
   transform: translateY(0);
   opacity: 1;
 }
+
 .flip-leave-to {
   transform: translateY(-100%);
   opacity: 0;

@@ -4,6 +4,7 @@
            "action": "<create|delete|update>",
            "payload": <任意 JSON-safe dict>}
 """
+
 from __future__ import annotations
 import asyncio
 import json

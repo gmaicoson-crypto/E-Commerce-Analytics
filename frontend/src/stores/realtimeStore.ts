@@ -9,14 +9,26 @@
  *   - 计数器 watcher 是 Vue 原生响应式,精准,不需要 EventListener 派发
  */
 import { defineStore } from 'pinia'
-import { ref, reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { API_BASE } from '@/services/api'
 
 export type BusEntity =
-  | 'order' | 'product' | 'customer' | 'notification' | 'finance' | 'refund' | 'system'
+  | 'order'
+  | 'product'
+  | 'customer'
+  | 'notification'
+  | 'finance'
+  | 'refund'
+  | 'system'
 
 const INITIAL_COUNTERS: Record<BusEntity, number> = {
-  order: 0, product: 0, customer: 0, notification: 0, finance: 0, refund: 0, system: 0,
+  order: 0,
+  product: 0,
+  customer: 0,
+  notification: 0,
+  finance: 0,
+  refund: 0,
+  system: 0,
 }
 
 export const useRealtimeStore = defineStore('realtime', () => {
@@ -32,19 +44,31 @@ export const useRealtimeStore = defineStore('realtime', () => {
   }
 
   function connect(): void {
-    if (es) return
+    if (es) {
+      return
+    }
+
     const token = localStorage.getItem('token')
-    if (!token) return
+    if (!token) {
+      return
+    }
 
     es = new EventSource(`${API_BASE}/sse/events?token=${encodeURIComponent(token)}`)
 
-    es.onopen = () => { connected.value = true }
+    es.onopen = () => {
+      connected.value = true
+    }
 
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data)
-        if (!data || data.action === 'hello') return
-        if (data.entity) bump(data.entity as string)
+        if (!data || data.action === 'hello') {
+          return
+        }
+
+        if (data.entity) {
+          bump(data.entity as string)
+        }
       } catch (err) {
         console.error('[realtime] parse error', err)
       }

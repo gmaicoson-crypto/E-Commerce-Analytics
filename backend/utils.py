@@ -1,7 +1,6 @@
 from datetime import datetime, date, timedelta
 from typing import Tuple, Optional, Any, Dict
 
-
 # ─── 客户类型判定规则 ────────────────────────────────────────────────────
 # 业务规则:注册即为新客,注册时间 > 30 天后自动转为老客。
 # 判定基于 Customer.registered_at,与 DB 的 customer_type 字段无关
@@ -26,7 +25,11 @@ def new_customer_threshold() -> datetime:
     return datetime.utcnow() - timedelta(days=NEW_CUSTOMER_DAYS)
 
 
-def parse_date_range(date_range: str = "30", start_date: Optional[str] = None, end_date: Optional[str] = None) -> Tuple[date, date]:
+def parse_date_range(
+    date_range: str = "30",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Tuple[date, date]:
     """Parse date_range parameter and return (start_date, end_date)."""
     today = date.today()
 
@@ -66,17 +69,9 @@ def get_prev_period(start: date, end: date) -> Tuple[date, date]:
 
 def success_response(data: Any = None, message: str = "success") -> Dict[str, Any]:
     """Unified success response format."""
-    return {
-        "code": 200,
-        "message": message,
-        "data": data
-    }
+    return {"code": 200, "message": message, "data": data}
 
 
 def error_response(message: str = "error", code: int = 400) -> Dict[str, Any]:
     """Unified error response format."""
-    return {
-        "code": code,
-        "message": message,
-        "data": None
-    }
+    return {"code": code, "message": message, "data": None}

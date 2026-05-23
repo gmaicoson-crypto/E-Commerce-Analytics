@@ -11,8 +11,8 @@ export const unreadCount = ref(0)
 
 export async function refreshUnread(): Promise<void> {
   try {
-    const r = await api.getUnreadCount()
-    unreadCount.value = Number(r?.unread_count ?? 0)
+    const response = await api.getUnreadCount()
+    unreadCount.value = Number(response?.unread_count ?? 0)
   } catch {
     // 静默忽略(非 admin 会 401/403,正常)
   }

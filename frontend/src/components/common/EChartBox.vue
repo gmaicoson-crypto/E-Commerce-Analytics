@@ -1,25 +1,42 @@
 <template>
-  <div ref="elRef" class="echart-box" :style="{ '--h': height + 'px' }" />
+  <div
+    ref="elRef"
+    class="echart-box"
+    :style="{ '--h': `${height}px` }"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { ECBasicOption } from 'echarts/types/dist/shared'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-const props = withDefaults(defineProps<{ option: unknown; height?: number }>(), { height: 240 })
+const props = withDefaults(
+  defineProps<{
+    option: unknown
+    height?: number
+  }>(),
+  {
+    height: 240,
+  },
+)
 
 const elRef = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let ro: ResizeObserver | null = null
 
 function init() {
-  if (!elRef.value) return
+  if (!elRef.value) {
+    return
+  }
+
   chart = echarts.init(elRef.value)
   chart.setOption(props.option as ECBasicOption)
 }
 
-function resize() { chart?.resize() }
+function resize() {
+  chart?.resize()
+}
 
 onMounted(() => {
   init()
@@ -38,16 +55,19 @@ onUnmounted(() => {
   ro = null
 })
 
-watch(() => props.option, (opt) => chart?.setOption(opt as ECBasicOption, true), { deep: true })
+watch(
+  () => props.option,
+  (opt) => chart?.setOption(opt as ECBasicOption, true),
+  { deep: true },
+)
 </script>
 
 <style scoped>
 .echart-box {
   width: 100%;
-  height: var(--h);  /* 默认按传入像素高度;与兄弟元素并存时尊重此值 */
+  height: var(--h);
 }
-/* 当 EChartBox 是父容器唯一子元素时,撑满父高度,
-   ECharts 内部按更大画布重新计算 grid 留白,纵坐标标签不会被挤压 */
+
 .echart-box:only-child {
   height: 100%;
   min-height: var(--h);

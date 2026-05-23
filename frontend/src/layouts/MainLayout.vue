@@ -3,16 +3,18 @@
     <Sidebar />
     <div class="main">
       <TopBar />
-      <main class="content fade-in"><RouterView /></main>
+      <main class="content fade-in">
+        <RouterView />
+      </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar.vue'
-import TopBar  from '@/components/layout/TopBar.vue'
+import TopBar from '@/components/layout/TopBar.vue'
 import { useAuthStore } from '@/stores/authStore'
 import { useDebouncedReload } from '@/composables/useEventStream'
 import { useRealtimeStore } from '@/stores/realtimeStore'
@@ -38,7 +40,23 @@ useDebouncedReload(['notification'], () => {
 </script>
 
 <style scoped>
-.shell   { display:flex;height:100vh;width:100%;overflow:hidden; }
-.main    { flex:1;display:flex;flex-direction:column;overflow:hidden; }
-.content { flex:1;overflow:auto;padding:24px 28px; }
+.shell {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 28px;
+}
 </style>

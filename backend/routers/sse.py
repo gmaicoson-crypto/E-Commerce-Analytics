@@ -2,6 +2,7 @@
 
 由于浏览器原生 EventSource 不支持自定义 Header,token 通过 query 参数传入。
 """
+
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 import asyncio
@@ -52,7 +53,9 @@ async def _event_stream(entities: Optional[set] = None):
 async def all_events(token: str = Query(...)):
     """订阅全部事件流。前端用这个就够了。"""
     _verify_token(token)
-    return StreamingResponse(_event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+    return StreamingResponse(
+        _event_stream(), media_type="text/event-stream", headers=SSE_HEADERS
+    )
 
 
 @router.get("/orders")
@@ -79,4 +82,6 @@ async def finance_events(token: str = Query(...)):
 async def dashboard_events(token: str = Query(...)):
     """旧接口保留,转发全部事件。"""
     _verify_token(token)
-    return StreamingResponse(_event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+    return StreamingResponse(
+        _event_stream(), media_type="text/event-stream", headers=SSE_HEADERS
+    )

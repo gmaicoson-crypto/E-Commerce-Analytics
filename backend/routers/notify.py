@@ -2,6 +2,7 @@
 
 Simulator(8001)写完库后调用此端点,backend(8000)再通过 event_bus 广播给 SSE 订阅者。
 """
+
 from typing import Any, Dict
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -11,8 +12,8 @@ router = APIRouter()
 
 
 class NotifyEvent(BaseModel):
-    entity: str   # customer / product / order / refund / finance / notification
-    action: str   # create / update / delete
+    entity: str  # customer / product / order / refund / finance / notification
+    action: str  # create / update / delete
     payload: Dict[str, Any] = {}
 
 

@@ -3,6 +3,7 @@
 挂载 /api/* 演示接口 + / 静态 UI。模拟器只生成业务事件,
 由 backend 接收、落库并广播 SSE。
 """
+
 from pathlib import Path
 from typing import Optional, Any, Dict, List
 
@@ -15,13 +16,14 @@ from pydantic import BaseModel
 import data_factory as df
 from automation import engine as auto_engine
 
-
 app = FastAPI(title="Data Simulator Service", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -30,7 +32,9 @@ def _startup_sweep_stale_alerts() -> None:
     """启动时清理一次:商品库存已恢复但预警通知遗留的历史记录。"""
     ids = df.sweep_stale_stock_alerts()
     if ids:
-        print(f"[simulator] startup sweep: removed {len(ids)} stale stock_alert notifications")
+        print(
+            f"[simulator] startup sweep: removed {len(ids)} stale stock_alert notifications"
+        )
 
 
 @app.post("/api/maintenance/sweep_stock_alerts")
@@ -41,6 +45,7 @@ def api_sweep_stock_alerts():
 
 
 # ─── Pydantic 输入 schema ─────────────────────────────────────────────
+
 
 class CustomerCreate(BaseModel):
     gender: Optional[str] = None
@@ -130,6 +135,7 @@ def _err(message: str, code: int = 400):
 
 # ─── Counts ────────────────────────────────────────────────────────────
 
+
 @app.get("/api/counts")
 def api_counts():
     return _ok(df.get_counts())
@@ -137,19 +143,20 @@ def api_counts():
 
 # ─── Automation(后台协程) ────────────────────────────────────────────
 
+
 class AutoStartBody(BaseModel):
-    events_per_min:        Optional[float] = None
-    register_weight:       Optional[float] = None
+    events_per_min: Optional[float] = None
+    register_weight: Optional[float] = None
     # 推进循环
-    advances_per_min:      Optional[float] = None
-    pending_to_paid:       Optional[float] = None
-    pending_to_cancel:     Optional[float] = None
-    paid_to_shipped:       Optional[float] = None
-    shipped_to_completed:  Optional[float] = None
+    advances_per_min: Optional[float] = None
+    pending_to_paid: Optional[float] = None
+    pending_to_cancel: Optional[float] = None
+    paid_to_shipped: Optional[float] = None
+    shipped_to_completed: Optional[float] = None
     # 回填模式
-    backfill_enabled:      Optional[bool] = None
-    backfill_start_date:   Optional[str]  = None
-    backfill_end_date:     Optional[str]  = None
+    backfill_enabled: Optional[bool] = None
+    backfill_start_date: Optional[str] = None
+    backfill_end_date: Optional[str] = None
 
 
 @app.post("/api/automation/start")
@@ -169,6 +176,7 @@ def api_auto_status():
 
 # ─── Customer ──────────────────────────────────────────────────────────
 
+
 @app.get("/api/customer/list")
 def api_customer_list(
     page: int = Query(1, ge=1),
@@ -178,17 +186,25 @@ def api_customer_list(
     province: Optional[str] = None,
     customer_type: Optional[str] = None,
 ):
-    return _ok(df.list_customers(
-        page, page_size,
-        gender=gender, age_group=age_group, province=province, customer_type=customer_type,
-    ))
+    return _ok(
+        df.list_customers(
+            page,
+            page_size,
+            gender=gender,
+            age_group=age_group,
+            province=province,
+            customer_type=customer_type,
+        )
+    )
 
 
 @app.post("/api/customer")
 def api_customer_create(body: CustomerCreate):
     info = df.create_customer(
-        gender=body.gender, age_group=body.age_group,
-        province=body.province, customer_type=body.customer_type,
+        gender=body.gender,
+        age_group=body.age_group,
+        province=body.province,
+        customer_type=body.customer_type,
     )
     return _ok(info)
 
@@ -199,8 +215,10 @@ def api_customer_bulk_create(body: CustomerBulkCreate):
     created = []
     for _ in range(n):
         info = df.create_customer(
-            gender=body.gender, age_group=body.age_group,
-            province=body.province, customer_type=body.customer_type,
+            gender=body.gender,
+            age_group=body.age_group,
+            province=body.province,
+            customer_type=body.customer_type,
         )
         created.append(info)
     return _ok({"count": len(created), "data": created})
@@ -232,6 +250,7 @@ def api_customer_bulk_delete(body: BulkDeleteBody):
 
 # ─── Product ───────────────────────────────────────────────────────────
 
+
 @app.get("/api/product/list")
 def api_product_list(
     page: int = Query(1, ge=1),
@@ -245,8 +264,11 @@ def api_product_list(
 @app.post("/api/product")
 def api_product_create(body: ProductCreate):
     info = df.create_product(
-        category=body.category, status=body.status,
-        price=body.price, cost=body.cost, stock=body.stock,
+        category=body.category,
+        status=body.status,
+        price=body.price,
+        cost=body.cost,
+        stock=body.stock,
     )
     return _ok(info)
 
@@ -257,8 +279,11 @@ def api_product_bulk_create(body: ProductBulkCreate):
     created = []
     for _ in range(n):
         info = df.create_product(
-            category=body.category, status=body.status,
-            price=body.price, cost=body.cost, stock=body.stock,
+            category=body.category,
+            status=body.status,
+            price=body.price,
+            cost=body.cost,
+            stock=body.stock,
         )
         created.append(info)
     return _ok({"count": len(created), "data": created})
@@ -289,6 +314,7 @@ def api_product_bulk_delete(body: BulkDeleteBody):
 
 
 # ─── Order ─────────────────────────────────────────────────────────────
+
 
 @app.get("/api/order/list")
 def api_order_list(
@@ -333,6 +359,7 @@ def api_order_bulk_delete(body: BulkDeleteBody):
 
 # ─── Finance ───────────────────────────────────────────────────────────
 
+
 @app.get("/api/finance/list")
 def api_finance_list(
     page: int = Query(1, ge=1),
@@ -346,7 +373,9 @@ def api_finance_list(
 @app.post("/api/finance")
 def api_finance_create(body: FinanceCreate):
     info = df.create_finance_record(
-        type_=body.type, category=body.category, amount=body.amount,
+        type_=body.type,
+        category=body.category,
+        amount=body.amount,
     )
     return _ok(info)
 
@@ -369,6 +398,7 @@ def api_finance_delete(id: int):
 
 # ─── Notification ──────────────────────────────────────────────────────
 
+
 @app.get("/api/notification/list")
 def api_notification_list(
     page: int = Query(1, ge=1),
@@ -382,7 +412,9 @@ def api_notification_list(
 @app.post("/api/notification")
 def api_notification_create(body: NotificationCreate):
     info = df.create_notification(
-        ntype=body.ntype, title=body.title, content=body.content,
+        ntype=body.ntype,
+        title=body.title,
+        content=body.content,
     )
     return _ok(info)
 
@@ -417,4 +449,5 @@ def index():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8001)

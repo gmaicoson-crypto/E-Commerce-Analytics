@@ -10,11 +10,17 @@ const CHINA_MAP_URL = '/china.json'
 let promise: Promise<void> | null = null
 
 export function ensureChinaMap(): Promise<void> {
-  if (promise) return promise
+  if (promise) {
+    return promise
+  }
+
   promise = fetch(CHINA_MAP_URL)
-    .then((r) => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      return r.json()
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      return response.json()
     })
     .then((geo) => {
       echarts.registerMap('china', geo)
@@ -24,6 +30,7 @@ export function ensureChinaMap(): Promise<void> {
       console.error('[chinaMap] load failed', e)
       throw e
     })
+
   return promise
 }
 
@@ -66,5 +73,5 @@ export const PROVINCE_FULL_NAME: Record<string, string> = {
 }
 
 export function toFullProvinceName(name: string): string {
-  return PROVINCE_FULL_NAME[name] || name
+  return PROVINCE_FULL_NAME[name] ?? name
 }
