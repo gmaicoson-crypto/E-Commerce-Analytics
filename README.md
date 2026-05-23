@@ -118,8 +118,8 @@ flowchart LR
 1. **克隆仓库**
 
    ```bash
-   git clone <your-repository-url>
-   cd ecommerce-vue-ts
+   git clone https://github.com/gmaicoson-crypto/E-Commerce-Analytics.git
+   cd E-Commerce-Analytics
    ```
 
 2. **初始化数据库**
@@ -225,7 +225,7 @@ pending（待付款）
 ## 📁 项目结构
 
 ```text
-ecommerce-vue-ts/
+E-Commerce-Analytics/
 ├── backend/                     # FastAPI 后端服务
 │   ├── routers/                 # API 路由模块
 │   │   ├── auth.py              # 登录、注册、个人信息
