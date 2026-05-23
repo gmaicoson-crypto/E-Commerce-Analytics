@@ -15,10 +15,7 @@ class Settings(BaseSettings):
     access_token_expire_hours: int = Field(
         default=24, alias="ACCESS_TOKEN_EXPIRE_HOURS"
     )
-    deepseek_api_key: Optional[str] = Field(default=None, alias="DEEPSEEK_API_KEY")
-    deepseek_base_url: str = Field(
-        default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL"
-    )
+
     debug: bool = Field(default=False, alias="DEBUG")
     # SMTP 邮件配置（管理员注册验证码）
     smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")
