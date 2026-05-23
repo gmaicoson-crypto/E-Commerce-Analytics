@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+/* 支持滚动加载的表格组件 */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import DataTable from './DataTable.vue'
 import type { TableColumn } from '@/types'
@@ -79,9 +80,8 @@ const showBackToTop = ref(false)
 let observer: IntersectionObserver | null = null
 let topObserver: IntersectionObserver | null = null
 let scrollContainer: HTMLElement | Window = window
-let loadId = 0 // 防止 resetKey 切换时旧请求乱序
+let loadId = 0 
 
-// MainLayout 的真实滚动容器是 .content(而非 window)
 function findScrollContainer(): HTMLElement | Window {
   return (document.querySelector('.content') as HTMLElement | null) ?? window
 }
@@ -96,11 +96,11 @@ async function loadNext(): Promise<void> {
   const nextPage = page.value + 1
   try {
     const r = await props.loader(nextPage, props.pageSize)
-    if (myId !== loadId) return // 期间发生了 reset,丢弃结果
+    if (myId !== loadId) return 
     rows.value.push(...r.data)
     total.value = r.total
     page.value = nextPage
-    // 加载完后若 sentinel 仍在视口(列表太短),继续拉下一页
+    
     await nextTick()
     if (sentinelEl.value && hasMore.value && isInViewport(sentinelEl.value)) {
       loading.value = false
@@ -127,7 +127,7 @@ function isInViewport(el: HTMLElement): boolean {
 }
 
 function reset(): void {
-  loadId++ // 让正在进行的请求失效
+  loadId++ 
   rows.value = []
   page.value = 0
   total.value = 0
@@ -136,7 +136,7 @@ function reset(): void {
 }
 
 function scrollToTop(): void {
-  // 用真实滚动容器(.content)而非 window;在 MainLayout 下 window 不滚动
+  
   if (scrollContainer instanceof Window) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } else {
@@ -151,7 +151,7 @@ watch(
 
 onMounted(() => {
   scrollContainer = findScrollContainer()
-  // IntersectionObserver 的 root 必须是 Element(或 null=viewport),不能传 Window
+  
   const obsRoot: Element | null = scrollContainer instanceof Window ? null : scrollContainer
 
   observer = new IntersectionObserver(
@@ -196,7 +196,6 @@ defineExpose({ reset, total })
   position: relative;
 }
 
-/* 1px 顶部哨兵 — 不占视觉空间,只给 IntersectionObserver 用 */
 .inf-top-sentinel {
   height: 1px;
 }

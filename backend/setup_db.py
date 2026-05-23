@@ -1,3 +1,4 @@
+# 初始化数据库脚本：读取 SQL 文件并创建数据库
 import pymysql
 import os
 from dotenv import load_dotenv
@@ -8,8 +9,10 @@ ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = Path(__file__).resolve().parent
 SQL_PATH = ROOT / "database" / "sql" / "create_database.sql"
 
+# 从 backend/.env 加载环境变量
 load_dotenv(BACKEND_DIR / ".env")
 
+# 解析数据库连接信息
 url = make_url(
     os.environ.get(
         "DATABASE_URL", "mysql+pymysql://root:password@localhost:3306/ecommerce_db"
@@ -29,6 +32,7 @@ try:
     )
 
     with connection.cursor() as cursor:
+        # 读取 SQL 文件并替换数据库名占位符
         sql = SQL_PATH.read_text(encoding="utf-8").format(
             database=database.replace("`", "``")
         )

@@ -297,6 +297,7 @@
 </template>
 
 <script setup lang="ts">
+/* 商品分析与管理页面。 */
 import { computed, h, onMounted, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
 import AppBadge from '@/components/common/AppBadge.vue'

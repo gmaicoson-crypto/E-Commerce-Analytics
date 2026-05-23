@@ -12,6 +12,7 @@
 </template>
 
 <script setup lang="ts">
+/* 通用卡片容器组件 */
 withDefaults(
   defineProps<{
     title?: string

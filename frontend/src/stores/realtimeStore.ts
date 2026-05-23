@@ -1,13 +1,5 @@
-/**
- * 全局实时事件总线 —— 全应用唯一 EventSource,常驻整个登录态。
- *
- * 视图通过 useDebouncedReload(['order','finance'], reload) watch 对应 entity 的计数器变化,
- * 一旦后端 publish 该类型事件,store 的 counters[entity]++,所有 watcher 触发 reload。
- *
- * 优点:
- *   - 单连接,无视图切换断开重连的中间窗口丢事件
- *   - 计数器 watcher 是 Vue 原生响应式,精准,不需要 EventListener 派发
- */
+/* 实时事件与通知状态管理 */
+
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 import { API_BASE } from '@/services/api'

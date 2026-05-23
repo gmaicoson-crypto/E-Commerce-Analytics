@@ -8,6 +8,7 @@
 </template>
 
 <script setup lang="ts">
+/* 错误提示页面。 */
 withDefaults(
   defineProps<{ code?: number }>(),
   { code: 404 },

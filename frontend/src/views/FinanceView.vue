@@ -99,6 +99,7 @@
 </template>
 
 <script setup lang="ts">
+/* 财务分析页面。 */
 import { computed, h, onMounted, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
 import AppBadge from '@/components/common/AppBadge.vue'

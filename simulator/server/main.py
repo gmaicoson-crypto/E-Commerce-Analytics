@@ -1,9 +1,3 @@
-"""Simulator FastAPI 服务(端口 8001)。
-
-挂载 /api/* 演示接口 + / 静态 UI。模拟器只生成业务事件,
-由 backend 接收、落库并广播 SSE。
-"""
-
 from pathlib import Path
 from typing import Optional, Any, Dict, List
 
@@ -16,6 +10,7 @@ from pydantic import BaseModel
 import data_factory as df
 from automation import engine as auto_engine
 
+# 模拟器服务，监听 8001 端口，提供演示数据接口与静态 UI
 app = FastAPI(title="Data Simulator Service", version="1.0")
 
 app.add_middleware(
@@ -29,23 +24,20 @@ app.add_middleware(
 
 @app.on_event("startup")
 def _startup_sweep_stale_alerts() -> None:
-    """启动时清理一次:商品库存已恢复但预警通知遗留的历史记录。"""
+    # 启动时清理已恢复库存对应的遗留预警通知
     ids = df.sweep_stale_stock_alerts()
     if ids:
-        print(
-            f"[simulator] startup sweep: removed {len(ids)} stale stock_alert notifications"
-        )
+        print(f"[simulator] startup sweep: removed {len(ids)} stale stock_alert notifications")
 
 
 @app.post("/api/maintenance/sweep_stock_alerts")
 def api_sweep_stock_alerts():
-    """手动触发清理:扫描所有 stock_alert,凡商品当前 stock >= threshold 即删。"""
+    # 手动触发清理：库存已恢复的 stock_alert 通知
     ids = df.sweep_stale_stock_alerts()
     return _ok({"deleted": len(ids), "ids": ids})
 
 
-# ─── Pydantic 输入 schema ─────────────────────────────────────────────
-
+# ── 请求体 Schema ─────────────────────────────────────────────────────────
 
 class CustomerCreate(BaseModel):
     gender: Optional[str] = None
@@ -133,27 +125,23 @@ def _err(message: str, code: int = 400):
     raise HTTPException(status_code=code, detail={"code": code, "message": message})
 
 
-# ─── Counts ────────────────────────────────────────────────────────────
-
+# ── 统计 ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/counts")
 def api_counts():
     return _ok(df.get_counts())
 
 
-# ─── Automation(后台协程) ────────────────────────────────────────────
-
+# ── 自动化（后台协程） ────────────────────────────────────────────────────
 
 class AutoStartBody(BaseModel):
     events_per_min: Optional[float] = None
     register_weight: Optional[float] = None
-    # 推进循环
     advances_per_min: Optional[float] = None
     pending_to_paid: Optional[float] = None
     pending_to_cancel: Optional[float] = None
     paid_to_shipped: Optional[float] = None
     shipped_to_completed: Optional[float] = None
-    # 回填模式
     backfill_enabled: Optional[bool] = None
     backfill_start_date: Optional[str] = None
     backfill_end_date: Optional[str] = None
@@ -174,8 +162,7 @@ def api_auto_status():
     return _ok(auto_engine.status())
 
 
-# ─── Customer ──────────────────────────────────────────────────────────
-
+# ── 客户 ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/customer/list")
 def api_customer_list(
@@ -188,12 +175,9 @@ def api_customer_list(
 ):
     return _ok(
         df.list_customers(
-            page,
-            page_size,
-            gender=gender,
-            age_group=age_group,
-            province=province,
-            customer_type=customer_type,
+            page, page_size,
+            gender=gender, age_group=age_group,
+            province=province, customer_type=customer_type,
         )
     )
 
@@ -201,10 +185,8 @@ def api_customer_list(
 @app.post("/api/customer")
 def api_customer_create(body: CustomerCreate):
     info = df.create_customer(
-        gender=body.gender,
-        age_group=body.age_group,
-        province=body.province,
-        customer_type=body.customer_type,
+        gender=body.gender, age_group=body.age_group,
+        province=body.province, customer_type=body.customer_type,
     )
     return _ok(info)
 
@@ -215,10 +197,8 @@ def api_customer_bulk_create(body: CustomerBulkCreate):
     created = []
     for _ in range(n):
         info = df.create_customer(
-            gender=body.gender,
-            age_group=body.age_group,
-            province=body.province,
-            customer_type=body.customer_type,
+            gender=body.gender, age_group=body.age_group,
+            province=body.province, customer_type=body.customer_type,
         )
         created.append(info)
     return _ok({"count": len(created), "data": created})
@@ -248,8 +228,7 @@ def api_customer_bulk_delete(body: BulkDeleteBody):
     return _ok(result)
 
 
-# ─── Product ───────────────────────────────────────────────────────────
-
+# ── 商品 ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/product/list")
 def api_product_list(
@@ -264,11 +243,8 @@ def api_product_list(
 @app.post("/api/product")
 def api_product_create(body: ProductCreate):
     info = df.create_product(
-        category=body.category,
-        status=body.status,
-        price=body.price,
-        cost=body.cost,
-        stock=body.stock,
+        category=body.category, status=body.status,
+        price=body.price, cost=body.cost, stock=body.stock,
     )
     return _ok(info)
 
@@ -279,11 +255,8 @@ def api_product_bulk_create(body: ProductBulkCreate):
     created = []
     for _ in range(n):
         info = df.create_product(
-            category=body.category,
-            status=body.status,
-            price=body.price,
-            cost=body.cost,
-            stock=body.stock,
+            category=body.category, status=body.status,
+            price=body.price, cost=body.cost, stock=body.stock,
         )
         created.append(info)
     return _ok({"count": len(created), "data": created})
@@ -313,8 +286,7 @@ def api_product_bulk_delete(body: BulkDeleteBody):
     return _ok(result)
 
 
-# ─── Order ─────────────────────────────────────────────────────────────
-
+# ── 订单 ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/order/list")
 def api_order_list(
@@ -357,8 +329,7 @@ def api_order_bulk_delete(body: BulkDeleteBody):
     return _ok(result)
 
 
-# ─── Finance ───────────────────────────────────────────────────────────
-
+# ── 财务 ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/finance/list")
 def api_finance_list(
@@ -372,11 +343,7 @@ def api_finance_list(
 
 @app.post("/api/finance")
 def api_finance_create(body: FinanceCreate):
-    info = df.create_finance_record(
-        type_=body.type,
-        category=body.category,
-        amount=body.amount,
-    )
+    info = df.create_finance_record(type_=body.type, category=body.category, amount=body.amount)
     return _ok(info)
 
 
@@ -396,8 +363,7 @@ def api_finance_delete(id: int):
     return _ok(info)
 
 
-# ─── Notification ──────────────────────────────────────────────────────
-
+# ── 通知 ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/notification/list")
 def api_notification_list(
@@ -411,11 +377,7 @@ def api_notification_list(
 
 @app.post("/api/notification")
 def api_notification_create(body: NotificationCreate):
-    info = df.create_notification(
-        ntype=body.ntype,
-        title=body.title,
-        content=body.content,
-    )
+    info = df.create_notification(ntype=body.ntype, title=body.title, content=body.content)
     return _ok(info)
 
 
@@ -435,7 +397,7 @@ def api_notification_delete(id: int):
     return _ok(info)
 
 
-# ─── 静态 UI ───────────────────────────────────────────────────────────
+# ── 静态 UI ───────────────────────────────────────────────────────────────
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"

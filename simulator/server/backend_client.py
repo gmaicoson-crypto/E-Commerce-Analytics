@@ -5,13 +5,16 @@ import os
 
 import httpx
 
+# 后端服务地址与鉴权 Token，支持通过环境变量覆盖
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 BACKEND_INGEST_TOKEN = os.environ.get("BACKEND_INGEST_TOKEN")
 
+# 复用单个 HTTP 客户端以减少连接开销
 _client = httpx.Client(timeout=10.0, trust_env=False)
 
 
 def _headers() -> Dict[str, str]:
+    # 若配置了 Token 则附加 Bearer 认证头
     return (
         {"Authorization": f"Bearer {BACKEND_INGEST_TOKEN}"}
         if BACKEND_INGEST_TOKEN
@@ -26,6 +29,7 @@ def request(
     params: Optional[dict] = None,
     json: Optional[dict] = None,
 ):
+    # 统一向后端 /api/ingest 前缀发请求，失败时抛出 RuntimeError
     res = _client.request(
         method,
         f"{BACKEND_URL}/api/ingest{path}",
@@ -46,9 +50,13 @@ def request(
     return payload.get("data")
 
 
+# ── 统计 ──────────────────────────────────────────────────────────────────
+
 def get_counts():
     return request("GET", "/counts")
 
+
+# ── 客户 ──────────────────────────────────────────────────────────────────
 
 def list_customers(**params):
     return request("GET", "/customers/list", params=params)
@@ -70,6 +78,8 @@ def delete_customers(ids: list[int]):
     return request("POST", "/customers/bulk-delete", json={"ids": ids})
 
 
+# ── 商品 ──────────────────────────────────────────────────────────────────
+
 def list_products(**params):
     return request("GET", "/products/list", params=params)
 
@@ -89,6 +99,8 @@ def delete_product(product_id: int):
 def delete_products(ids: list[int]):
     return request("POST", "/products/bulk-delete", json={"ids": ids})
 
+
+# ── 订单 ──────────────────────────────────────────────────────────────────
 
 def list_orders(**params):
     return request("GET", "/orders/list", params=params)
@@ -110,6 +122,8 @@ def delete_orders(ids: list[int]):
     return request("POST", "/orders/bulk-delete", json={"ids": ids})
 
 
+# ── 财务 ──────────────────────────────────────────────────────────────────
+
 def list_finance(**params):
     return request("GET", "/finance/list", params=params)
 
@@ -125,6 +139,8 @@ def update_finance(finance_id: int, payload: dict):
 def delete_finance(finance_id: int):
     return request("DELETE", f"/finance/{finance_id}")
 
+
+# ── 通知 ──────────────────────────────────────────────────────────────────
 
 def list_notifications(**params):
     return request("GET", "/notifications/list", params=params)

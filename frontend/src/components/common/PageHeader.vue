@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+/* 页面标题栏组件 */
 defineProps<{
   title: string
   subtitle?: string

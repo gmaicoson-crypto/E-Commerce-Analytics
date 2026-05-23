@@ -10,15 +10,11 @@
         <span v-if="unreadCount > 0" class="bell-dot" />
       </button>
     </div>
-
-    <!-- 用户信息(可点击) -->
     <button class="user-info" title="点击查看资料 / 修改密码" @click="openProfile">
       <div class="u-avatar"><AppIcon name="user" :size="14" color="#fff" /></div>
       <span class="u-name">{{ auth.username ?? '—' }}</span>
       <AppBadge :label="roleLabel" :color="auth.isAdmin ? 'green' : 'blue'" />
     </button>
-
-    <!-- 个人资料 Modal -->
     <Teleport to="body">
       <div v-if="showModal" class="modal-mask" @click.self="closeModal">
         <div class="modal-card">
@@ -26,8 +22,6 @@
             <h3>个人资料</h3>
             <button class="modal-x" @click="closeModal">×</button>
           </div>
-
-          <!-- 资料区 -->
           <section class="form-block">
             <div class="block-title">基本信息</div>
             <div class="profile-row">
@@ -49,8 +43,6 @@
             </div>
             <div v-if="profileMsg" class="msg" :class="profileOk ? 'ok' : 'err'">{{ profileMsg }}</div>
           </section>
-
-          <!-- 改密区 -->
           <section class="form-block">
             <div class="block-title">修改密码</div>
             <div class="form-row">
@@ -79,6 +71,7 @@
 </template>
 
 <script setup lang="ts">
+/* 顶部导航与个人资料弹窗 */
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/services/api'
@@ -112,7 +105,7 @@ async function openProfile() {
   pwd.old_password = ''
   pwd.new_password = ''
   pwd.confirm = ''
-  // 首次打开拉一次 /auth/me 拿当前 email(store 不保存 email)
+  
   try {
     const me = await api.getCurrentUser()
     profile.username = me?.username ?? auth.username ?? ''

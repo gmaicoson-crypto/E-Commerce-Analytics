@@ -12,6 +12,7 @@ from utils import success_response, new_customer_threshold, customer_type_label
 router = APIRouter()
 
 
+# 客户列表（分页 + 筛选，新老客按注册时间实时判定）
 @router.get("/customers/list", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 def customers_list(
     page: int = Query(1, ge=1),
@@ -29,7 +30,7 @@ def customers_list(
         q = q.filter(Customer.age_group == age_group)
     if province:
         q = q.filter(Customer.province == province)
-    # customer_type 不再读 DB 字段,改用注册时间窗 —— 注册 ≤ 30 天为 new,> 30 天为 returning
+    # 用注册时间窗口判定新老客，不读 DB 中 customer_type 字段
     if customer_type == "new":
         q = q.filter(Customer.registered_at >= new_customer_threshold())
     elif customer_type == "returning":
@@ -50,7 +51,6 @@ def customers_list(
                     "gender": c.gender.value if c.gender else None,
                     "age_group": c.age_group.value if c.age_group else None,
                     "province": c.province,
-                    # 实时按 registered_at 算,而不是读 DB 字段
                     "customer_type": customer_type_label(c.registered_at),
                     "registered_at": (
                         c.registered_at.isoformat() if c.registered_at else None
@@ -68,12 +68,11 @@ def customers_list(
     )
 
 
+# 用户概览统计：总数、新客、老客、复购客、今日活跃
 @router.get("/overview", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def users_overview(db: Session = Depends(get_db)):
-    """Get user overview statistics."""
     total_customers = db.query(Customer).count()
     threshold = new_customer_threshold()
-    # 新规则:注册 ≤ 30 天为新客,> 30 天自动转老客
     new_customers = (
         db.query(Customer).filter(Customer.registered_at >= threshold).count()
     )
@@ -81,7 +80,7 @@ async def users_overview(db: Session = Depends(get_db)):
         db.query(Customer).filter(Customer.registered_at < threshold).count()
     )
 
-    # 复购客数:拥有 2+ 订单的客户数(按 customer_id 分组,having count >= 2)
+    # 拥有 2 笔及以上订单的客户数
     repeat_customers = (
         db.query(Order.customer_id)
         .filter(Order.customer_id.isnot(None))
@@ -90,7 +89,6 @@ async def users_overview(db: Session = Depends(get_db)):
         .count()
     )
 
-    # Get user activity
     today = date.today()
     active_today = (
         db.query(Customer)
@@ -114,9 +112,9 @@ async def users_overview(db: Session = Depends(get_db)):
     )
 
 
+# 按年龄段分布统计
 @router.get("/by-age-group", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def users_by_age_group(db: Session = Depends(get_db)):
-    """Get users distribution by age group."""
     customers = db.query(Customer).all()
 
     age_group_stats = {}
@@ -138,14 +136,12 @@ async def users_by_age_group(db: Session = Depends(get_db)):
     return success_response(data)
 
 
+# 按省份分布统计
 @router.get("/by-province", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def users_by_province(
-    limit: int = Query(
-        100, ge=1, le=100
-    ),  # 中国大陆 + 港澳台共 34 个省级行政区,100 足够
+    limit: int = Query(100, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    """Get users distribution by province."""
     customers = db.query(Customer).all()
 
     province_stats = {}
@@ -165,9 +161,9 @@ async def users_by_province(
     return success_response({"total_provinces": len(province_stats), "data": data})
 
 
+# 按性别分布统计
 @router.get("/by-gender", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def users_by_gender(db: Session = Depends(get_db)):
-    """Get users distribution by gender."""
     customers = db.query(Customer).all()
 
     gender_stats = {}
@@ -189,14 +185,14 @@ async def users_by_gender(db: Session = Depends(get_db)):
     return success_response(data)
 
 
+# 用户注册增长趋势（按天统计）
 @router.get("/growth", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def user_growth(
     days: int = Query(30, ge=1, le=90),
     db: Session = Depends(get_db),
 ):
-    """Get user registration growth over time."""
     today = date.today()
-    start = today - timedelta(days=days - 1)  # 包含今天:共 days 天
+    start = today - timedelta(days=days - 1)
 
     growth_data = []
     cumulative = 0
@@ -220,9 +216,9 @@ async def user_growth(
     return success_response({"period_days": days, "data": growth_data})
 
 
+# RFM 分析（最近购买、购买频次、消费金额）
 @router.get("/rfm-analysis", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def rfm_analysis(db: Session = Depends(get_db)):
-    """Get RFM (Recency, Frequency, Monetary) analysis."""
     today = datetime.utcnow()
     reference_date = today.date()
 
@@ -242,14 +238,9 @@ async def rfm_analysis(db: Session = Depends(get_db)):
         if not orders:
             continue
 
-        # Recency: days since last order
         last_order = max(orders, key=lambda x: x.created_at)
         recency = (reference_date - last_order.created_at.date()).days
-
-        # Frequency: number of orders
         frequency = len(orders)
-
-        # Monetary: total spent
         monetary = sum(o.total_amount for o in orders) or Decimal(0)
 
         rfm_data.append(
@@ -263,20 +254,19 @@ async def rfm_analysis(db: Session = Depends(get_db)):
             }
         )
 
-    # Sort by monetary value
     rfm_data.sort(key=lambda x: x["monetary_value"], reverse=True)
 
     return success_response(
         {
             "total_active_customers": len(rfm_data),
-            "data": rfm_data[:100],  # Top 100 customers by value
+            "data": rfm_data[:100],
         }
     )
 
 
+# 按注册月份的用户队列分析
 @router.get("/cohort", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def cohort_analysis(db: Session = Depends(get_db)):
-    """Get user cohort analysis by registration month."""
     customers = db.query(Customer).all()
 
     cohort_data = {}
@@ -289,7 +279,6 @@ async def cohort_analysis(db: Session = Depends(get_db)):
             cohort_data[cohort_month] = {"registered": 0, "active_today": 0}
         cohort_data[cohort_month]["registered"] += 1
 
-        # Check if active in current month
         today = date.today()
         orders = (
             db.query(Order)

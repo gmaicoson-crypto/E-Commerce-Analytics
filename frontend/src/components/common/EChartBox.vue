@@ -7,6 +7,7 @@
 </template>
 
 <script setup lang="ts">
+/* ECharts 图表容器组件 */
 import * as echarts from 'echarts'
 import type { ECBasicOption } from 'echarts/types/dist/shared'
 import { onMounted, onUnmounted, ref, watch } from 'vue'

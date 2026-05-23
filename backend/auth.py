@@ -4,17 +4,21 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from database import settings
 
+# 使用 pbkdf2_sha256 算法加密密码
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
+# 对明文密码进行哈希
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
+# 校验明文密码与哈希是否匹配
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
+# 生成 JWT 访问令牌
 def create_access_token(
     data: Dict[str, Any], expires_delta: Optional[timedelta] = None
 ) -> str:
@@ -28,6 +32,7 @@ def create_access_token(
     return encoded_jwt
 
 
+# 解码并验证 JWT 令牌，失败返回 None
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])

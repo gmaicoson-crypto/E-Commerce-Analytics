@@ -109,6 +109,7 @@
 </template>
 
 <script setup lang="ts">
+/* 销售概览页面。 */
 import type { EChartsOption } from 'echarts'
 import { computed, onMounted, ref } from 'vue'
 import AppCard from '@/components/common/AppCard.vue'

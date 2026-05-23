@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+/* 指标卡片组件 */
 import { computed, ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import AppIcon from './AppIcon.vue'
 
@@ -124,7 +125,7 @@ function runTween(from: number, to: number, fmt: Parsed): void {
   ticking.value = true
   const tick = (now: number) => {
     const t = Math.min(1, (now - start) / dur)
-    const eased = 1 - Math.pow(1 - t, 3) // easeOutCubic
+    const eased = 1 - Math.pow(1 - t, 3) 
     const v = from + (to - from) * eased
     display.value = format(v, fmt)
     if (t < 1) {
@@ -148,7 +149,7 @@ watch(
     ticking.value = false
     return
   }
-  // 旧值无法解析(如 '—' 占位)→ 视为从 0 起跑,沿用目标 suffix
+  
   const from = cur ? cur.num : 0
   if (from === dst.num) {
     cancel()
@@ -156,7 +157,7 @@ watch(
     ticking.value = false
     return
   }
-  // 跨单位 snap,但"0"起步视同与目标同单位 → 允许从 0 tween 到带单位目标
+  
   if (cur && cur.suffix !== dst.suffix && cur.num !== 0) {
     cancel()
     display.value = next
@@ -167,7 +168,6 @@ watch(
   },
 )
 
-// 挂载时若 value 已非零(父组件首屏值就绪/keep-alive 复用)→ 从 0 跑一次进入动画
 onMounted(() => {
   const dst = parseLeadingNumber(String(props.value ?? ''))
   if (dst && dst.num !== 0) {

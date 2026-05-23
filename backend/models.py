@@ -16,6 +16,8 @@ import enum
 from database import Base
 
 
+# ── 枚举定义 ──────────────────────────────────────────────────────────────────
+
 class CategoryEnum(str, enum.Enum):
     clothing = "服装"
     electronics = "电子"
@@ -46,7 +48,7 @@ class OrderStatusEnum(str, enum.Enum):
     paid = "paid"
     shipped = "shipped"
     completed = "completed"
-    cancelled = "cancelled"  # pending/paid → cancelled,不计入收入
+    cancelled = "cancelled"
     refunded = "refunded"
 
 
@@ -92,7 +94,9 @@ class NotificationTypeEnum(str, enum.Enum):
     sales_alert = "sales_alert"
 
 
-# System Tables
+# ── 系统表 ────────────────────────────────────────────────────────────────────
+
+# 管理员账号
 class Admin(Base):
     __tablename__ = "admins"
 
@@ -105,9 +109,8 @@ class Admin(Base):
     last_login_at = Column(DateTime, nullable=True)
 
 
+# 管理员注册邮箱验证码，10 分钟有效
 class AdminVerificationCode(Base):
-    """管理员注册流程的邮箱验证码。10 分钟内有效,used_at 标记已使用。"""
-
     __tablename__ = "admin_verification_codes"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -118,6 +121,7 @@ class AdminVerificationCode(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
+# 员工账号
 class Employee(Base):
     __tablename__ = "employees"
 
@@ -130,6 +134,7 @@ class Employee(Base):
     last_login_at = Column(DateTime, nullable=True)
 
 
+# 功能模块
 class Module(Base):
     __tablename__ = "modules"
 
@@ -140,6 +145,7 @@ class Module(Base):
     sort_order = Column(Integer, default=0)
 
 
+# 员工模块权限
 class EmployeeModulePermission(Base):
     __tablename__ = "employee_module_permissions"
     __table_args__ = (Index("idx_employee_module", "employee_id", "module_id"),)
@@ -154,6 +160,7 @@ class EmployeeModulePermission(Base):
     revoked_by = Column(Integer, ForeignKey("admins.id"), nullable=True)
 
 
+# 权限变更日志
 class PermissionChangeLog(Base):
     __tablename__ = "permission_change_logs"
 
@@ -168,7 +175,9 @@ class PermissionChangeLog(Base):
     remark = Column(String(200), nullable=True)
 
 
-# Business Tables
+# ── 业务表 ────────────────────────────────────────────────────────────────────
+
+# 商品
 class Product(Base):
     __tablename__ = "products"
 
@@ -187,6 +196,7 @@ class Product(Base):
     order_items = relationship("OrderItem", back_populates="product")
 
 
+# 客户
 class Customer(Base):
     __tablename__ = "customers"
 
@@ -203,6 +213,7 @@ class Customer(Base):
     orders = relationship("Order", back_populates="customer")
 
 
+# 订单
 class Order(Base):
     __tablename__ = "orders"
     __table_args__ = (
@@ -228,6 +239,7 @@ class Order(Base):
     )
 
 
+# 订单明细
 class OrderItem(Base):
     __tablename__ = "order_items"
 
@@ -242,6 +254,7 @@ class OrderItem(Base):
     product = relationship("Product", back_populates="order_items")
 
 
+# 退款记录
 class Refund(Base):
     __tablename__ = "refunds"
 
@@ -256,6 +269,7 @@ class Refund(Base):
     completed_at = Column(DateTime, nullable=True)
 
 
+# 财务记录
 class FinanceRecord(Base):
     __tablename__ = "finance_records"
     __table_args__ = (
@@ -272,6 +286,7 @@ class FinanceRecord(Base):
     recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
+# 系统通知
 class Notification(Base):
     __tablename__ = "notifications"
 

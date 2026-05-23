@@ -1,3 +1,5 @@
+/* 登录态与当前用户状态管理 */
+
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { Role } from '@/types'
@@ -40,7 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await api.logout()
     } catch {
-      // Ignore error on logout
+      
     } finally {
       api.clearToken()
       role.value = null
@@ -64,10 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
     return isAdmin.value || permissions.value.includes(moduleName)
   }
 
-  /**
-   * 从 /auth/me 拉取最新 username / role / permissions,同步到 store + localStorage。
-   * 用于:admin 改员工权限后侧边栏自动反映新权限;用户修改个人资料后顶栏即时刷新。
-   */
+  
   async function refreshPermissions(): Promise<void> {
     if (!isLoggedIn.value) {
       return
@@ -87,17 +86,17 @@ export const useAuthStore = defineStore('auth', () => {
 
       const perms: string[] = me?.permissions ?? []
 
-      // admin 端 /auth/me 不返回 permissions,这种情况保持原值不动
+      
       if (me?.role === 'staff') {
         permissions.value = perms
         localStorage.setItem('permissions', JSON.stringify(perms))
       }
     } catch {
-      // token 过期或网络错误 → 忽略,不强制踢出
+      
     }
   }
 
-  /** 本地直接同步资料(不再发请求)。给个人资料表单保存后用。 */
+  
   function setProfile(updates: { username?: string }): void {
     if (updates.username) {
       username.value = updates.username

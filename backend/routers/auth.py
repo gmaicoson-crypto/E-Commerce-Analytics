@@ -24,29 +24,28 @@ router = APIRouter()
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
+# 当前用户资料更新请求体
 class MeUpdate(BaseModel):
     username: Optional[str] = Field(default=None, min_length=2, max_length=50)
     email: Optional[str] = Field(default=None, min_length=5, max_length=100)
 
 
+# 修改密码请求体
 class PasswordChange(BaseModel):
     old_password: str = Field(min_length=4, max_length=128)
     new_password: str = Field(min_length=4, max_length=128)
 
 
+# 登录接口：支持邮箱或用户名，管理员和员工共用
 @router.post("/login", response_model=dict)
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Login endpoint - 用邮箱登录(也兼容老的 username 登录,先匹 email 再匹 username)。
-
-    管理员和员工都查;两个表都 email 唯一,所以查询无歧义。
-    """
     from sqlalchemy import or_
 
     user = None
     role = None
     ident = (request.username or "").strip()
 
-    # 管理员表:email 或 username 任一匹配
+    # 优先匹配管理员表
     admin = (
         db.query(Admin)
         .filter(or_(Admin.email == ident, Admin.username == ident))
@@ -59,7 +58,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             admin.last_login_at = datetime.utcnow()
             db.commit()
 
-    # 员工表
+    # 再匹配员工表
     if not user:
         employee = (
             db.query(Employee)
@@ -82,7 +81,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid username or password",
         )
 
-    # Create JWT token
+    # 签发 JWT
     access_token = create_access_token(
         data={
             "sub": str(user.id),
@@ -91,7 +90,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         }
     )
 
-    # Get permissions (if employee)
+    # 获取员工权限列表
     permissions = None
     if role == "employee":
         perms = (
@@ -111,10 +110,10 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         modules = db.query(Module).all()
         permissions = [m.module_key for m in modules]
 
-    # Map role to frontend expectation (employee -> staff)
+    # 员工角色映射为前端 'staff'
     frontend_role = "staff" if role == "employee" else role
 
-    response = success_response(
+    return success_response(
         {
             "token": access_token,
             "role": frontend_role,
@@ -125,22 +124,16 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         }
     )
 
-    return response
 
-
+# 管理员注册：发送邮箱验证码（同邮箱 60 秒限频）
 @router.post("/admin/send-code", response_model=dict)
 async def admin_send_code(body: SendCodeRequest, db: Session = Depends(get_db)):
-    """管理员注册:发送邮箱验证码。
-
-    限频:同邮箱 60 秒内只能发一次,避免滥用。
-    """
     email = body.email.strip().lower()
     if not EMAIL_RE.match(email):
         raise HTTPException(400, "邮箱格式不正确")
     if db.query(Admin).filter(Admin.email == email).first():
         raise HTTPException(400, "该邮箱已注册")
 
-    # 限频
     cutoff = datetime.utcnow() - timedelta(seconds=60)
     recent = (
         db.query(AdminVerificationCode)
@@ -151,7 +144,7 @@ async def admin_send_code(body: SendCodeRequest, db: Session = Depends(get_db)):
         .first()
     )
     if recent:
-        raise HTTPException(429, "请求过于频繁,60 秒后重试")
+        raise HTTPException(429, "请求过于频繁，60 秒后重试")
 
     code = "".join(random.choices("0123456789", k=6))
     rec = AdminVerificationCode(
@@ -164,28 +157,27 @@ async def admin_send_code(body: SendCodeRequest, db: Session = Depends(get_db)):
 
     subject = "电商数据分析平台 · 管理员注册验证码"
     text = (
-        f"您正在注册管理员账号,本次验证码是:\n\n"
+        f"您正在注册管理员账号，本次验证码是：\n\n"
         f"    {code}\n\n"
-        f"10 分钟内有效。如非本人操作,请忽略本邮件。"
+        f"10 分钟内有效。如非本人操作，请忽略本邮件。"
     )
     try:
         send_email(email, subject, text)
     except RuntimeError as e:
-        # SMTP 未配置:把记录回滚,告诉前端
         db.delete(rec)
         db.commit()
         raise HTTPException(500, str(e))
     except Exception as e:
         db.delete(rec)
         db.commit()
-        raise HTTPException(500, f"邮件发送失败:{e}")
+        raise HTTPException(500, f"邮件发送失败：{e}")
 
     return success_response({"sent": True, "email": email, "expires_in": 600})
 
 
+# 管理员注册：校验验证码后创建账号
 @router.post("/admin/register", response_model=dict)
 async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db)):
-    """管理员注册:校验验证码后创建账号。"""
     username = body.username.strip()
     email = body.email.strip().lower()
 
@@ -225,15 +217,15 @@ async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_d
     )
 
 
+# 登出接口（JWT 无状态，仅返回成功）
 @router.post("/logout", response_model=dict, dependencies=[Depends(get_current_user)])
 async def logout():
-    """Logout endpoint - JWT is stateless, just return success."""
     return success_response(message="Logged out successfully")
 
 
+# 获取当前登录用户信息及权限列表
 @router.get("/me", response_model=dict)
 async def get_me(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get current user info with permissions."""
     permissions = []
 
     if current_user.role == "admin":
@@ -254,7 +246,6 @@ async def get_me(current_user=Depends(get_current_user), db: Session = Depends(g
         )
         permissions = [m.module_key for m in perms]
 
-    # Map role for frontend
     frontend_role = "staff" if current_user.role == "employee" else current_user.role
 
     user_info = {
@@ -270,18 +261,18 @@ async def get_me(current_user=Depends(get_current_user), db: Session = Depends(g
     return success_response(user_info)
 
 
+# 根据 token 中 table 字段返回对应的 ORM 模型类
 def _self_table_model(current_user):
-    """根据 token 的 table 字段返回该用户对应的 ORM model 类。"""
     return Admin if current_user.table == "admins" else Employee
 
 
+# 当前用户更新自己的用户名或邮箱
 @router.patch("/me", response_model=dict)
 async def update_me(
     body: MeUpdate,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """当前用户更新自己的 username/email。两边都做唯一性校验。"""
     Model = _self_table_model(current_user)
     user = db.query(Model).filter(Model.id == current_user.id).first()
     if not user:
@@ -321,13 +312,13 @@ async def update_me(
     )
 
 
+# 当前用户修改密码，需验证旧密码
 @router.post("/me/password", response_model=dict)
 async def change_password(
     body: PasswordChange,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """当前用户修改自己的密码。必须验证旧密码。"""
     Model = _self_table_model(current_user)
     user = db.query(Model).filter(Model.id == current_user.id).first()
     if not user:

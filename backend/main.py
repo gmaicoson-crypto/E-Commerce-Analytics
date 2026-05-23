@@ -17,16 +17,14 @@ from routers import (
     ingest,
 )
 
-# Create all tables on startup
+# 启动时创建所有数据库表
 Base.metadata.create_all(bind=engine)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     print("Application startup")
     yield
-    # Shutdown
     print("Application shutdown")
 
 
@@ -37,7 +35,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware
+# 跨域中间件，允许所有来源访问
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,7 +44,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include all routers
+# 注册各业务模块路由
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(system.router, prefix="/api/system", tags=["System"])
 app.include_router(sales.router, prefix="/api/sales", tags=["Sales"])
@@ -62,7 +60,7 @@ app.include_router(notify.router, prefix="/api/notify", tags=["Notify"])
 app.include_router(ingest.router, prefix="/api/ingest", tags=["Simulator Ingest"])
 
 
-# Health check endpoint
+# 健康检查接口
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}

@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+/* 头条通知滚动组件 */
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
@@ -64,13 +65,9 @@ const NOTIF_COLOR: Record<string, string> = {
 }
 
 const entries = ref<Entry[]>([])
-// 固定动画周期 —— 不依赖 entries.length,这样未读 ↔ 热卖 切换时
-// animation-duration 不变,CSS animation 不会 restart,track 在原位置继续向左滚。
+
 const dur = 30
 
-// 把 entries 重复到至少 MIN_GROUP 条 —— 保证每"半组"宽度 ≥ marquee 容器宽,
-// 否则单条/双条 entry 时 track 太短,滚到中段就会出现 marquee 右侧的空白,
-// clone 紧跟空白后才出现 → 视觉上是"跳"而不是"接"。
 const MIN_GROUP = 4
 const renderedEntries = computed<Entry[]>(() => {
   if (entries.value.length === 0) return []

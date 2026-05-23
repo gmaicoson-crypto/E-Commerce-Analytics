@@ -11,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+/* 后台主布局组件 */
 import { onBeforeUnmount, onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar.vue'
@@ -23,7 +24,6 @@ import { refreshUnread } from '@/composables/useUnreadCount'
 const auth = useAuthStore()
 const realtime = useRealtimeStore()
 
-// 应用唯一 EventSource,跟随 MainLayout 生命周期 → 登录后开,登出/路由出 MainLayout 后关
 onMounted(() => {
   auth.refreshPermissions()
   realtime.connect()
@@ -33,7 +33,6 @@ onBeforeUnmount(() => {
   realtime.disconnect()
 })
 
-// notification 事件(create/delete/update)触发未读数 refetch
 useDebouncedReload(['notification'], () => {
   if (auth.isAdmin) refreshUnread()
 })

@@ -9,11 +9,11 @@ from models import Admin, Employee, Module, EmployeeModulePermission
 security = HTTPBearer()
 
 
+# 从请求头解析 JWT，返回当前登录用户对象
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
-    """Extract and validate JWT token, return user object."""
     token = credentials.credentials
     payload = decode_access_token(token)
 
@@ -53,14 +53,13 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Attach extra info
     user.role = role
     user.table = table
     return user
 
 
+# 仅管理员可访问的依赖
 def require_admin(current_user=Depends(get_current_user)):
-    """Dependency to check if user is admin."""
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
@@ -68,17 +67,16 @@ def require_admin(current_user=Depends(get_current_user)):
     return current_user
 
 
+# 工厂函数：生成指定模块的权限校验依赖
 def check_module_permission(module_key: str) -> Callable:
-    """Factory function to create a dependency that checks module permission."""
-
     async def verify_permission(
         current_user=Depends(get_current_user), db: Session = Depends(get_db)
     ):
-        # Admin has access to all modules
+        # 管理员拥有所有模块权限
         if current_user.role == "admin":
             return current_user
 
-        # Employee: check permission_change_logs
+        # 员工需要查询模块权限表
         if current_user.role == "employee":
             module = db.query(Module).filter(Module.module_key == module_key).first()
             if not module:
@@ -106,12 +104,11 @@ def check_module_permission(module_key: str) -> Callable:
     return verify_permission
 
 
+# 获取用户有权限的模块 key 列表
 def get_user_permissions(
     user_id: int, role: str, db: Session = Depends(get_db)
 ) -> list:
-    """Get list of module_keys that user has access to."""
     if role == "admin":
-        # Admin has all permissions
         modules = db.query(Module).all()
         return [m.module_key for m in modules]
     elif role == "employee":

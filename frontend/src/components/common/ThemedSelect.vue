@@ -31,6 +31,7 @@
 </template>
 
 <script setup lang="ts">
+/* 主题风格下拉选择组件 */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
 export interface ThemedSelectOption {
@@ -41,7 +42,7 @@ export interface ThemedSelectOption {
 const props = withDefaults(
   defineProps<{
     modelValue: string
-    options: ReadonlyArray<ThemedSelectOption>   // 兼容 Vue props 推导出的 readonly 数组
+    options: ReadonlyArray<ThemedSelectOption>   
     placeholder?: string
     minWidth?: number | string
   }>(),

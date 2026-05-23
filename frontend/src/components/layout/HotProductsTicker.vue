@@ -22,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+/* 热门商品滚动条组件 */
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRealtimeStore } from '@/stores/realtimeStore'
 import { api } from '@/services/api'

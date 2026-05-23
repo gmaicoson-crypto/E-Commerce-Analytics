@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Generic, TypeVar
 from datetime import datetime
 
-# Generic Response Wrapper
+# 泛型响应包装器
 T = TypeVar("T")
 
 
@@ -12,7 +12,8 @@ class APIResponse(BaseModel, Generic[T]):
     data: Optional[T] = None
 
 
-# Auth Schemas
+# ── 认证相关 ──────────────────────────────────────────────────────────────────
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -47,7 +48,8 @@ class UserInfo(BaseModel):
     permissions: Optional[List[str]] = None
 
 
-# Pagination
+# ── 分页 ──────────────────────────────────────────────────────────────────────
+
 class PaginatedData(BaseModel, Generic[T]):
     total: int
     page: int
@@ -55,7 +57,8 @@ class PaginatedData(BaseModel, Generic[T]):
     list: List[T]
 
 
-# Employee & Permission Schemas
+# ── 员工与权限 ────────────────────────────────────────────────────────────────
+
 class EmployeeCreate(BaseModel):
     username: str
     email: str
@@ -101,10 +104,11 @@ class PermissionLogOut(BaseModel):
     remark: Optional[str] = None
 
 
-# Sales Schemas
+# ── 销售分析 ──────────────────────────────────────────────────────────────────
+
 class KPIMetric(BaseModel):
     value: float
-    yoy: float = 0.0  # year-over-year change rate
+    yoy: float = 0.0
 
 
 class SalesKPIOut(BaseModel):
@@ -135,7 +139,8 @@ class ProvinceData(BaseModel):
     sales: float
 
 
-# Product Schemas
+# ── 商品分析 ──────────────────────────────────────────────────────────────────
+
 class ProductRankItem(BaseModel):
     rank: int
     product_id: int
@@ -167,10 +172,11 @@ class ProductListItem(BaseModel):
 class ProductSalesTrend(BaseModel):
     product_id: int
     product_name: str
-    trend: List[dict]  # [{date, sales_count}, ...]
+    trend: List[dict]
 
 
-# User Schemas
+# ── 用户分析 ──────────────────────────────────────────────────────────────────
+
 class UserKPIOut(BaseModel):
     total_customers: int
     new_customers: int
@@ -181,7 +187,7 @@ class UserKPIOut(BaseModel):
 
 
 class TypeRatio(BaseModel):
-    new: dict  # {count, ratio}
+    new: dict
     returning: dict
 
 
@@ -203,11 +209,12 @@ class AgeGroupData(BaseModel):
 
 
 class GenderData(BaseModel):
-    male: dict  # {count, ratio}
+    male: dict
     female: dict
 
 
-# Order Schemas
+# ── 订单分析 ──────────────────────────────────────────────────────────────────
+
 class OrderKPIOut(BaseModel):
     total_orders: int
     completed_orders: int
@@ -237,7 +244,8 @@ class OrderListItem(BaseModel):
     created_at: datetime
 
 
-# Finance Schemas
+# ── 财务分析 ──────────────────────────────────────────────────────────────────
+
 class FinanceKPIOut(BaseModel):
     total_income: float
     total_expense: float
@@ -271,7 +279,8 @@ class FinanceRecordItem(BaseModel):
     recorded_at: datetime
 
 
-# Notification Schemas
+# ── 通知 ──────────────────────────────────────────────────────────────────────
+
 class NotificationOut(BaseModel):
     id: int
     type: str
@@ -281,10 +290,11 @@ class NotificationOut(BaseModel):
     created_at: datetime
 
 
-# AI Schemas
+# ── AI 对话 ───────────────────────────────────────────────────────────────────
+
 class AIChatRequest(BaseModel):
     message: str
-    mode: str = "query"  # query, trend_analysis, navigation
+    mode: str = "query"
     history: Optional[List[dict]] = None
 
 
@@ -293,5 +303,5 @@ class AIChatResponse(BaseModel):
 
 
 class AIStreamMessage(BaseModel):
-    event: str  # 'token', 'action', 'done'
+    event: str
     data: dict

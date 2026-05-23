@@ -11,6 +11,7 @@ from utils import success_response, parse_date_range
 router = APIRouter()
 
 
+# 订单概览：6 种状态的数量与金额汇总
 @router.get("/overview", response_model=dict, dependencies=[Depends(check_module_permission("order_analysis"))])
 async def orders_overview(
     date_range: str = Query("today"),
@@ -18,7 +19,6 @@ async def orders_overview(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get order overview statistics."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     orders = (
@@ -31,7 +31,6 @@ async def orders_overview(
     )
 
     total_orders = len(orders)
-    # 6 种状态:订单数 + 金额合计 同时返回,前端 KPI 卡片各占一张
     by_status: dict[str, tuple[int, Decimal]] = {
         s: (0, Decimal(0))
         for s in ("pending", "paid", "shipped", "completed", "cancelled", "refunded")
@@ -43,8 +42,7 @@ async def orders_overview(
             by_status[s] = (cnt + 1, amt + (o.total_amount or Decimal(0)))
 
     total_amount = sum(o.total_amount for o in orders) or Decimal(0)
-    # 平均订单金额 = 4 个有效状态(pending+paid+shipped+completed)金额合计 / 4 状态订单数
-    # 不含 cancelled / refunded(取消和退款的订单不算入有效消费)
+    # 有效订单（不含取消/退款）用于计算平均客单价
     valid_statuses = ("pending", "paid", "shipped", "completed")
     valid_orders = [
         o
@@ -77,6 +75,7 @@ async def orders_overview(
     )
 
 
+# 订单状态分布
 @router.get("/by-status", response_model=dict, dependencies=[Depends(check_module_permission("order_analysis"))])
 async def orders_by_status(
     date_range: str = Query("today"),
@@ -84,7 +83,6 @@ async def orders_by_status(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get orders distribution by status."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     orders = (
@@ -121,6 +119,7 @@ async def orders_by_status(
     )
 
 
+# 订单转化漏斗（下单 → 付款 → 发货 → 完成）
 @router.get("/funnel", response_model=dict, dependencies=[Depends(check_module_permission("order_analysis"))])
 async def order_funnel(
     date_range: str = Query("today"),
@@ -128,7 +127,6 @@ async def order_funnel(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get order conversion funnel."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     all_orders = (
@@ -173,6 +171,7 @@ async def order_funnel(
     )
 
 
+# 退款分析：退款金额、退款率、退款原因分布
 @router.get("/refund-analysis", response_model=dict, dependencies=[Depends(check_module_permission("order_analysis"))])
 async def refund_analysis(
     date_range: str = Query("last_30_days"),
@@ -180,7 +179,6 @@ async def refund_analysis(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get refund analysis."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     refunds = (
@@ -196,7 +194,6 @@ async def refund_analysis(
     completed_refunds = [r for r in refunds if r.status == "completed"]
     completed_amount = sum(r.refund_amount for r in completed_refunds) or Decimal(0)
 
-    # Refund reasons
     reason_stats = {}
     for refund in refunds:
         reason = refund.reason
@@ -205,7 +202,6 @@ async def refund_analysis(
         reason_stats[reason]["count"] += 1
         reason_stats[reason]["amount"] += refund.refund_amount
 
-    # Get total orders in period for refund rate
     total_orders = (
         db.query(Order)
         .filter(
@@ -239,18 +235,17 @@ async def refund_analysis(
     )
 
 
+# 订单时间线：按天统计订单数和总金额，缺失日期补零
 @router.get("/timeline", response_model=dict, dependencies=[Depends(check_module_permission("order_analysis"))])
 async def order_timeline(
     days: int = Query(7, ge=1, le=90),
     db: Session = Depends(get_db),
 ):
-    """Get order timeline - daily order count and amount."""
     today = date.today()
-    start = today - timedelta(days=days - 1)  # 包含今天:共 days 天
+    start = today - timedelta(days=days - 1)
     s_dt = datetime.combine(start, datetime.min.time())
     e_dt = datetime.combine(today, datetime.max.time())
 
-    # 单条 SQL:按 DATE(created_at) 分组,一次拿齐每日订单数和总金额
     day_col = func.date(Order.created_at).label("d")
     rows = (
         db.query(
@@ -280,15 +275,15 @@ async def order_timeline(
     return success_response({"period_days": days, "data": timeline_data})
 
 
+# 订单列表（分页 + 状态/日期筛选）
 @router.get("/list", response_model=dict, dependencies=[Depends(check_module_permission("order_analysis"))])
 async def orders_list(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=10000),
     status_filter: str = Query(None, alias="status"),
-    date_filter: str = Query(None, alias="date"),  # 'YYYY-MM-DD' 仅返回当日订单
+    date_filter: str = Query(None, alias="date"),
     db: Session = Depends(get_db),
 ):
-    """Get paginated order list."""
     query = db.query(Order)
     if status_filter:
         query = query.filter(Order.status == status_filter)
@@ -299,7 +294,7 @@ async def orders_list(
             e_dt = datetime.combine(target, datetime.max.time())
             query = query.filter(Order.created_at >= s_dt, Order.created_at <= e_dt)
         except ValueError:
-            pass  # 无效日期视为不过滤
+            pass
 
     total = query.count()
     orders = (
@@ -342,13 +337,13 @@ async def orders_list(
     )
 
 
+# 大额订单查询（金额超过指定阈值）
 @router.get("/large-orders", response_model=dict, dependencies=[Depends(check_module_permission("order_analysis"))])
 async def large_orders(
     min_amount: float = Query(1000),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    """Get large orders above a certain amount."""
     orders = (
         db.query(Order)
         .filter(Order.total_amount >= Decimal(str(min_amount)))

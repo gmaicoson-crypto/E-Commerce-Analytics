@@ -13,6 +13,7 @@
 </template>
 
 <script setup lang="ts">
+/* 通用图标组件 */
 import { computed } from 'vue'
 
 const props = withDefaults(

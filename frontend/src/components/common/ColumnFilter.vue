@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+/* 表格列下拉筛选组件 */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
 export interface ColumnFilterOption {

@@ -131,6 +131,7 @@
 </template>
 
 <script setup lang="ts">
+/* 订单分析与列表页面。 */
 import { computed, h, onMounted, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
 import AppCard from '@/components/common/AppCard.vue'

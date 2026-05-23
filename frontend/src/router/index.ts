@@ -1,3 +1,5 @@
+/* 前端路由配置 */
+
 import {
   createRouter,
   createWebHashHistory,

@@ -148,6 +148,7 @@
 </template>
 
 <script setup lang="ts">
+/* 系统管理页面。 */
 import { computed, h, onMounted, ref } from 'vue'
 import AppBadge from '@/components/common/AppBadge.vue'
 import AppBtn from '@/components/common/AppBtn.vue'

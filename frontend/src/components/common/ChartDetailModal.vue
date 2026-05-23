@@ -64,6 +64,7 @@
 </template>
 
 <script setup lang="ts">
+/* 图表详情弹窗组件 */
 import { ref, reactive, watch, onMounted, onBeforeUnmount, computed } from 'vue'
 import type { EChartsOption } from 'echarts'
 import { useChartDetail } from '@/composables/useChartDetail'
@@ -186,7 +187,6 @@ onBeforeUnmount(() => {
   letter-spacing: 0.02em;
 }
 
-/* 自定义下拉:完全自绘 popup,彻底摆脱浏览器原生蓝色 hover */
 .f-wrapper {
   position: relative;
 }

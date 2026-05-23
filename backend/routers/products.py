@@ -13,6 +13,7 @@ from utils import success_response, parse_date_range
 router = APIRouter()
 
 
+# 创建商品请求体
 class ProductCreate(BaseModel):
     product_name: str = Field(min_length=1, max_length=100)
     category: str
@@ -23,6 +24,7 @@ class ProductCreate(BaseModel):
     status: str = "on_sale"
 
 
+# 更新商品请求体（所有字段可选）
 class ProductUpdate(BaseModel):
     product_name: str | None = Field(default=None, min_length=1, max_length=100)
     category: str | None = None
@@ -33,10 +35,12 @@ class ProductUpdate(BaseModel):
     status: str | None = None
 
 
+# 取枚举值字符串
 def _enum_value(value):
     return value.value if hasattr(value, "value") else value
 
 
+# 将 Product 对象序列化为字典
 def _product_row(p: Product) -> dict:
     return {
         "id": p.id,
@@ -51,6 +55,7 @@ def _product_row(p: Product) -> dict:
     }
 
 
+# 校验并转换品类枚举，无效时返回 400
 def _category(value: str) -> CategoryEnum:
     try:
         return CategoryEnum(value)
@@ -60,6 +65,7 @@ def _category(value: str) -> CategoryEnum:
         )
 
 
+# 校验并转换商品状态枚举，无效时返回 400
 def _status(value: str) -> ProductStatusEnum:
     try:
         return ProductStatusEnum(value)
@@ -69,10 +75,12 @@ def _status(value: str) -> ProductStatusEnum:
         )
 
 
+# 发布商品事件到 SSE 总线
 def _publish_product(action: str, payload: dict) -> None:
     bus.publish("product", action, payload)
 
 
+# 商品管理列表（分页 + 筛选）
 @router.get("/manage/list", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_list(
     page: int = Query(1, ge=1),
@@ -109,6 +117,7 @@ async def product_manage_list(
     )
 
 
+# 新增商品
 @router.post("/manage", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_create(
     body: ProductCreate,
@@ -132,6 +141,7 @@ async def product_manage_create(
     return success_response(row)
 
 
+# 更新商品信息
 @router.patch("/manage/{product_id}", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_update(
     product_id: int,
@@ -164,6 +174,7 @@ async def product_manage_update(
     return success_response(row)
 
 
+# 删除商品（有关联订单时拒绝）
 @router.delete("/manage/{product_id}", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_manage_delete(
     product_id: int,
@@ -183,9 +194,9 @@ async def product_manage_delete(
     return success_response(row)
 
 
+# 商品总览统计
 @router.get("/overview", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def products_overview(db: Session = Depends(get_db)):
-    """Get product overview statistics."""
     total_products = db.query(Product).count()
     on_sale = db.query(Product).filter(Product.status == "on_sale").count()
     off_sale = db.query(Product).filter(Product.status == "off_sale").count()
@@ -210,9 +221,9 @@ async def products_overview(db: Session = Depends(get_db)):
     )
 
 
+# 按品类统计商品数量、均价、库存
 @router.get("/by-category", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def products_by_category(db: Session = Depends(get_db)):
-    """Get products grouped by category - 单条 SQL GROUP BY。"""
     from sqlalchemy import case
 
     rows = (
@@ -246,12 +257,12 @@ async def products_by_category(db: Session = Depends(get_db)):
     return success_response(data)
 
 
+# 库存预警商品列表（库存低于阈值）
 @router.get("/low-stock", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def low_stock_products(
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    """Get products with low stock."""
     products = (
         db.query(Product)
         .filter(Product.stock < Product.low_stock_threshold)
@@ -276,13 +287,13 @@ async def low_stock_products(
     return success_response({"count": len(data), "data": data})
 
 
+# 横幅滚动热卖榜（任意登录用户可见，不校验模块权限）
 @router.get("/highlights", response_model=dict, dependencies=[Depends(get_current_user)])
 async def product_highlights(
     days: int = Query(7, ge=1, le=30),
     limit: int = Query(8, ge=1, le=20),
     db: Session = Depends(get_db),
 ):
-    """横幅滚动用的轻量热卖榜 —— 任何登录用户可见,不查模块权限。"""
     start = date.today() - timedelta(days=days - 1)
     end = date.today()
     rows = (
@@ -321,6 +332,7 @@ async def product_highlights(
     )
 
 
+# 商品销售绩效分析（按销售额排序）
 @router.get("/performance", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def product_performance(
     date_range: str = Query("last_7_days"),
@@ -329,7 +341,6 @@ async def product_performance(
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    """Get product sales performance - 单条 SQL GROUP BY product_id。"""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     rows = (
@@ -381,24 +392,20 @@ async def product_performance(
     )
 
 
+# TOP-N 商品近 N 天日销量曲线
 @router.get("/top-trend", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def top_products_trend(
     days: int = Query(30, ge=1, le=90),
     limit: int = Query(5, ge=1, le=20),
     db: Session = Depends(get_db),
 ):
-    """TOP-N 商品的近 N 天**真实**日销量曲线(含今天)。
-
-    返回 {dates: ["YYYY-MM-DD" × days], products: [{product_id, product_name,
-    category, total_qty, daily: [int × days]}]}
-    """
     today = date.today()
     start = today - timedelta(days=days - 1)
     start_dt = datetime.combine(start, datetime.min.time())
     end_dt = datetime.combine(today, datetime.max.time())
     paid_statuses = ["paid", "shipped", "completed"]
 
-    # 1) 先按总销售额选 TOP-N 商品 ID
+    # 第一步：按总销售额选 TOP-N 商品
     top_rows = (
         db.query(
             OrderItem.product_id.label("pid"),
@@ -425,12 +432,11 @@ async def top_products_trend(
     top_ids = [r.pid for r in top_rows]
     qty_map = {r.pid: int(r.total_qty or 0) for r in top_rows}
 
-    # 2) 拿商品基础信息
     products = {
         p.id: p for p in db.query(Product).filter(Product.id.in_(top_ids)).all()
     }
 
-    # 3) 单条 SQL:按 (day, product_id) GROUP BY 拉日级销量
+    # 第二步：按 (day, product_id) GROUP BY 拉日级销量
     daily_rows = (
         db.query(
             func.date(Order.created_at).label("day"),
@@ -476,15 +482,14 @@ async def top_products_trend(
     )
 
 
+# 指定日期 + 品类的当日 TOP-N 商品销量
 @router.get("/category-daily-top", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def category_daily_top(
-    date_str: str = Query(None, alias="date"),  # 'YYYY-MM-DD',缺省 = 今天
-    category: str = Query(None),  # 中文品类名:服装/电子/食品/家居/美妆
+    date_str: str = Query(None, alias="date"),
+    category: str = Query(None),
     limit: int = Query(5, ge=1, le=20),
     db: Session = Depends(get_db),
 ):
-    """指定日期 + 指定品类的当日 TOP-N 商品销量(按销售额排序)。"""
-    # 日期解析
     if date_str:
         try:
             target = date.fromisoformat(date_str)
@@ -554,6 +559,7 @@ async def category_daily_top(
     )
 
 
+# 按品类分析毛利润
 @router.get("/profit-analysis", response_model=dict, dependencies=[Depends(check_module_permission("product_analysis"))])
 async def profit_analysis(
     date_range: str = Query("last_30_days"),
@@ -561,7 +567,6 @@ async def profit_analysis(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get profit analysis by category."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     items = (

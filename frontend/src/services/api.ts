@@ -1,7 +1,4 @@
-/**
- * 后端 API 客户端。
- * 所有请求统一走 ApiClient.request，返回值约定 `{ code, message, data }`。
- */
+/* 前端接口请求封装 */
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000/api'
 
@@ -17,7 +14,6 @@ type ApiErrorPayload = {
   detail?: string | { message?: string } | Array<{ msg?: string }>
 }
 
-/** 把 `{a:1, b:undefined, c:'x'}` 编码为 `a=1&c=x`。 */
 function qs(params: Record<string, QueryValue>): string {
   const searchParams = new URLSearchParams()
 
@@ -80,7 +76,7 @@ class ApiClient {
     return json.data
   }
 
-  // ─── Auth ─────────────────────────────────────────────────────────────
+  
   login(username: string, password: string) {
     return this.request<any>('POST', '/auth/login', { username, password })
   }
@@ -109,7 +105,7 @@ class ApiClient {
     return this.request<any>('POST', '/auth/me/password', payload)
   }
 
-  // ─── Sales ────────────────────────────────────────────────────────────
+  
   getSalesOverview(dateRange = '30') {
     return this.request<any>(
       'GET',
@@ -135,7 +131,7 @@ class ApiClient {
     )
   }
 
-  // ─── Products ─────────────────────────────────────────────────────────
+  
   getProductsOverview() {
     return this.request<any>('GET', '/products/overview')
   }
@@ -216,7 +212,7 @@ class ApiClient {
     return this.request<any>('DELETE', `/products/manage/${id}`)
   }
 
-  // ─── Users / Customers ────────────────────────────────────────────────
+  
   getUsersOverview() {
     return this.request<any>('GET', '/users/overview')
   }
@@ -252,7 +248,7 @@ class ApiClient {
     )
   }
 
-  // ─── Orders ───────────────────────────────────────────────────────────
+  
   getOrdersOverview(dateRange = '30') {
     return this.request<any>('GET', `/orders/overview${qs({ date_range: dateRange })}`)
   }
@@ -272,7 +268,7 @@ class ApiClient {
     )
   }
 
-  // ─── Finance ──────────────────────────────────────────────────────────
+  
   getFinanceKPI(dateRange = '30') {
     return this.request<any>('GET', `/finance/kpi${qs({ date_range: dateRange })}`)
   }
@@ -298,7 +294,7 @@ class ApiClient {
     )
   }
 
-  // ─── Notifications ────────────────────────────────────────────────────
+  
   getNotifications(page = 1, pageSize = 50, isRead?: boolean) {
     return this.request<any>(
       'GET',
@@ -334,7 +330,7 @@ class ApiClient {
     return this.request<any>('DELETE', '/notifications/batch', { notification_ids: ids })
   }
 
-  // ─── System (admin) ───────────────────────────────────────────────────
+  
   getEmployees(page = 1, pageSize = 10) {
     return this.request<any>('GET', `/system/employees${qs({ page, page_size: pageSize })}`)
   }

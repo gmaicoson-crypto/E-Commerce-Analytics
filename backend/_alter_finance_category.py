@@ -1,12 +1,6 @@
-"""One-off migration: extend finance_records.category ENUM.
-
-SQL lives in database/sql/alter_finance_category_enum.sql so schema changes are
-maintained as standalone SQL instead of embedded Python strings.
-
-Usage:
-    cd backend
-    python _alter_finance_category.py
-"""
+# 一次性迁移脚本：扩展 finance_records.category 枚举值
+# SQL 文件位于 database/sql/alter_finance_category_enum.sql
+# 用法：cd backend && python _alter_finance_category.py
 
 from pathlib import Path
 

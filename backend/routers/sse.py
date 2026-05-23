@@ -1,7 +1,5 @@
-"""SSE 路由:订阅 event_bus,把业务事件推给前端。
-
-由于浏览器原生 EventSource 不支持自定义 Header,token 通过 query 参数传入。
-"""
+# SSE 路由：订阅 event_bus，将业务事件实时推送给前端
+# 由于浏览器原生 EventSource 不支持自定义 Header，token 通过 query 参数传入
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
@@ -13,7 +11,6 @@ from event_bus import bus, encode_sse
 
 router = APIRouter()
 
-
 SSE_HEADERS = {
     "Cache-Control": "no-cache",
     "X-Accel-Buffering": "no",
@@ -21,6 +18,7 @@ SSE_HEADERS = {
 }
 
 
+# 校验 token，无效时抛出 401
 def _verify_token(token: Optional[str]) -> None:
     if not token:
         raise HTTPException(status_code=401, detail="token required")
@@ -29,11 +27,10 @@ def _verify_token(token: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="invalid token")
 
 
+# 订阅事件总线并以 SSE 格式逐帧输出；每 15 秒发 ping 防止连接超时
 async def _event_stream(entities: Optional[set] = None):
-    """订阅 bus,把事件按 SSE 编码;每 15s 发一个 ping 防止连接超时。"""
     q = await bus.subscribe()
     try:
-        # 连接建立时先发一个 hello
         yield encode_sse({"entity": "system", "action": "hello", "payload": {}})
         while True:
             try:
@@ -49,15 +46,16 @@ async def _event_stream(entities: Optional[set] = None):
         await bus.unsubscribe(q)
 
 
+# 订阅全部事件流
 @router.get("/events")
 async def all_events(token: str = Query(...)):
-    """订阅全部事件流。前端用这个就够了。"""
     _verify_token(token)
     return StreamingResponse(
         _event_stream(), media_type="text/event-stream", headers=SSE_HEADERS
     )
 
 
+# 仅订阅订单与财务事件
 @router.get("/orders")
 async def orders_events(token: str = Query(...)):
     _verify_token(token)
@@ -68,6 +66,7 @@ async def orders_events(token: str = Query(...)):
     )
 
 
+# 仅订阅财务与订单事件
 @router.get("/finance")
 async def finance_events(token: str = Query(...)):
     _verify_token(token)
@@ -78,9 +77,9 @@ async def finance_events(token: str = Query(...)):
     )
 
 
+# 仪表盘事件流（兼容旧接口，转发全部事件）
 @router.get("/dashboard")
 async def dashboard_events(token: str = Query(...)):
-    """旧接口保留,转发全部事件。"""
     _verify_token(token)
     return StreamingResponse(
         _event_stream(), media_type="text/event-stream", headers=SSE_HEADERS

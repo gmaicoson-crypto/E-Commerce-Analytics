@@ -21,16 +21,19 @@ router = APIRouter()
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
+# 创建员工请求体
 class EmployeeCreate(BaseModel):
     username: str = Field(min_length=2, max_length=50)
     email: str = Field(min_length=5, max_length=100)
     password: str = Field(min_length=4, max_length=128)
 
 
+# 更新员工状态请求体
 class EmployeeUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+# 序列化员工对象为字典
 def _ser_employee(emp: Employee, permissions: list[str] | None = None) -> dict:
     return {
         "id": emp.id,
@@ -43,13 +46,13 @@ def _ser_employee(emp: Employee, permissions: list[str] | None = None) -> dict:
     }
 
 
+# 员工列表（管理员专属，分页）
 @router.get("/employees", response_model=dict, dependencies=[Depends(require_admin)])
 async def list_employees(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=10000),
     db: Session = Depends(get_db),
 ):
-    """Get all employees with pagination."""
     total = db.query(Employee).count()
     employees = (
         db.query(Employee)
@@ -101,11 +104,11 @@ async def list_employees(
     )
 
 
+# 获取指定员工详情及其当前权限
 @router.get("/employees/{employee_id}", response_model=dict, dependencies=[Depends(require_admin)])
 async def get_employee(
     employee_id: int, db: Session = Depends(get_db)
 ):
-    """Get employee details with permissions."""
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
 
     if not employee:
@@ -138,12 +141,12 @@ async def get_employee(
     return success_response(emp_info)
 
 
+# 新建员工账号（管理员专属，校验唯一性并哈希密码）
 @router.post("/employees", response_model=dict, dependencies=[Depends(require_admin)])
 async def create_employee(
     body: EmployeeCreate,
     db: Session = Depends(get_db),
 ):
-    """Admin-only:新增员工账号。校验用户名/邮箱唯一,密码 hash 后落库。"""
     if not EMAIL_RE.match(body.email):
         raise HTTPException(status_code=400, detail="邮箱格式不正确")
     if db.query(Employee).filter(Employee.username == body.username).first():
@@ -164,13 +167,13 @@ async def create_employee(
     return success_response(_ser_employee(emp), message="员工创建成功")
 
 
+# 更新员工启用状态（管理员专属）
 @router.patch("/employees/{employee_id}", response_model=dict, dependencies=[Depends(require_admin)])
 async def update_employee(
     employee_id: int,
     body: EmployeeUpdate,
     db: Session = Depends(get_db),
 ):
-    """Admin-only:更新员工启用状态。"""
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -181,7 +184,6 @@ async def update_employee(
     db.commit()
     db.refresh(emp)
 
-    # 拼当前生效权限
     perm_keys = [
         m.module_key
         for m in db.query(Module)
@@ -196,6 +198,7 @@ async def update_employee(
     return success_response(_ser_employee(emp, perm_keys))
 
 
+# 为员工授权或撤销模块权限（管理员专属）
 @router.patch("/employees/{employee_id}/permissions", response_model=dict)
 async def update_employee_permissions(
     employee_id: int,
@@ -203,7 +206,6 @@ async def update_employee_permissions(
     current_user=Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Grant or revoke module permissions for an employee."""
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
 
     if not employee:
@@ -212,7 +214,7 @@ async def update_employee_permissions(
         )
 
     module_key = request.get("module_key")
-    action = request.get("action")  # "grant" or "revoke"
+    action = request.get("action")
 
     if not module_key or not action:
         raise HTTPException(
@@ -234,7 +236,6 @@ async def update_employee_permissions(
         )
 
     if action == "grant":
-        # Check if permission already exists
         existing = (
             db.query(EmployeeModulePermission)
             .filter(
@@ -248,12 +249,11 @@ async def update_employee_permissions(
             if existing.is_active:
                 return error_response("Permission already granted", 400)
             else:
-                # Reactivate revoked permission
+                # 重新激活已撤销的权限
                 existing.is_active = True
                 existing.revoked_at = None
                 existing.revoked_by = None
         else:
-            # Create new permission
             perm = EmployeeModulePermission(
                 employee_id=employee_id,
                 module_id=module.id,
@@ -281,7 +281,7 @@ async def update_employee_permissions(
         existing.revoked_at = datetime.utcnow()
         existing.revoked_by = current_user.id
 
-    # Log the change
+    # 记录权限变更日志
     log = PermissionChangeLog(
         admin_id=current_user.id,
         target_user_id=employee_id,
@@ -298,9 +298,9 @@ async def update_employee_permissions(
     )
 
 
+# 获取所有可用功能模块
 @router.get("/modules", response_model=dict, dependencies=[Depends(require_admin)])
 async def list_modules(db: Session = Depends(get_db)):
-    """Get all available modules."""
     modules = db.query(Module).order_by(Module.sort_order).all()
 
     module_list = [
@@ -317,13 +317,13 @@ async def list_modules(db: Session = Depends(get_db)):
     return success_response(module_list)
 
 
+# 权限变更日志列表（分页）
 @router.get("/permission-logs", response_model=dict, dependencies=[Depends(require_admin)])
 async def get_permission_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=10000),
     db: Session = Depends(get_db),
 ):
-    """Get permission change logs."""
     total = db.query(PermissionChangeLog).count()
     logs = (
         db.query(PermissionChangeLog)

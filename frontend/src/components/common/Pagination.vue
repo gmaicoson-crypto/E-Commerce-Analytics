@@ -40,6 +40,7 @@
 </template>
 
 <script setup lang="ts">
+/* 分页组件 */
 import { computed } from 'vue'
 import AppIcon from './AppIcon.vue'
 
@@ -56,7 +57,6 @@ const totalPages = computed(
   () => Math.max(1, Math.ceil(props.total / props.pageSize)),
 )
 
-// 可见页号 —— 总是显示 5 个页码,过长时中间用 '…' 占位(与 DataTable 同款)
 const visiblePages = computed<(number | '...')[]>(() => {
   const total = totalPages.value
   const cur = props.page

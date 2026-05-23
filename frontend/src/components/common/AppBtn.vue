@@ -11,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+/* 通用按钮组件 */
 import AppIcon from './AppIcon.vue'
 
 withDefaults(

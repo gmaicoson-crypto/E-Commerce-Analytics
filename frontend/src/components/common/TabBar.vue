@@ -7,6 +7,7 @@
 </template>
 
 <script setup lang="ts">
+/* 标签切换组件 */
 defineProps<{ 
   tabs: { id: string; label: string }[]
   active: string 

@@ -115,6 +115,7 @@
 </template>
 
 <script setup lang="ts">
+/* 通知中心页面。 */
 import { computed, onMounted, ref } from 'vue'
 import AppBadge from '@/components/common/AppBadge.vue'
 import AppBtn from '@/components/common/AppBtn.vue'

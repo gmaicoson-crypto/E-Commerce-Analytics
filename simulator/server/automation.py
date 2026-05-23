@@ -1,10 +1,3 @@
-"""Automation engine for the simulator UI.
-
-The simulator behaves like an external commerce platform: it generates events
-and sends them to backend ingest APIs. It does not write the project database
-directly.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -16,20 +9,22 @@ from typing import Optional
 import data_factory as df
 
 
+# 自动化运行参数，所有字段均可在启动时通过接口覆盖
 @dataclass
 class AutoConfig:
-    events_per_min: float = 60.0
-    register_weight: float = 0.25
-    advances_per_min: float = 30.0
-    pending_to_paid: float = 0.6
-    pending_to_cancel: float = 0.1
-    paid_to_shipped: float = 0.6
-    shipped_to_completed: float = 0.8
-    backfill_enabled: bool = False
+    events_per_min: float = 60.0       # 每分钟生成事件数（注册 + 下单）
+    register_weight: float = 0.25      # 事件中注册客户的概率
+    advances_per_min: float = 30.0     # 每分钟推进订单状态次数
+    pending_to_paid: float = 0.6       # 待付款 → 已付款 概率
+    pending_to_cancel: float = 0.1     # 待付款 → 已取消 概率
+    paid_to_shipped: float = 0.6       # 已付款 → 已发货 概率
+    shipped_to_completed: float = 0.8  # 已发货 → 已完成 概率
+    backfill_enabled: bool = False      # 是否开启历史数据回填模式
     backfill_start_date: Optional[str] = None
     backfill_end_date: Optional[str] = None
 
 
+# 运行统计，记录各类事件的累计数量
 @dataclass
 class AutoStats:
     started_at: Optional[str] = None
@@ -61,11 +56,13 @@ class AutomationEngine:
     def start(self, **overrides) -> dict:
         if self.running:
             return self.status()
+        # 将接口传入的参数应用到配置
         for key, value in overrides.items():
             if hasattr(self.config, key) and value is not None:
                 setattr(self.config, key, value)
         self.stats = AutoStats(started_at=datetime.utcnow().isoformat())
         self.running = True
+        # 启动两个独立协程：事件生成 & 订单状态推进
         self._gen_task = asyncio.create_task(self._run_generation())
         self._adv_task = asyncio.create_task(self._run_advancement())
         return self.status()
@@ -108,6 +105,7 @@ class AutomationEngine:
             pass
 
     async def _sleep_for_rate(self, per_minute: float, started: float) -> None:
+        # 按目标速率计算等待时间，加入 ±10% 随机抖动
         target = 60.0 / per_minute
         elapsed = asyncio.get_event_loop().time() - started
         sleep_for = max(0.0, target - elapsed) * random.uniform(0.9, 1.1)
@@ -115,6 +113,7 @@ class AutomationEngine:
             await asyncio.sleep(sleep_for)
 
     def _generation_tick(self) -> None:
+        # 按权重决定本次生成注册事件还是下单事件
         if random.random() < self.config.register_weight:
             try:
                 df.create_customer()
@@ -135,6 +134,7 @@ class AutomationEngine:
                 self.stats.skipped_no_product += 1
 
     def _advancement_tick(self) -> None:
+        # 从 pending/paid/shipped 订单中随机选一条推进状态
         candidates = []
         for status in ("pending", "paid", "shipped"):
             try:
@@ -157,6 +157,7 @@ class AutomationEngine:
             print(f"[automation] order advance failed: {exc}")
             return
 
+        # 更新对应的统计计数器
         attr = {
             "paid": "adv_paid",
             "cancelled": "adv_cancelled",
@@ -167,6 +168,7 @@ class AutomationEngine:
             setattr(self.stats, attr, getattr(self.stats, attr) + 1)
 
     def _decide_next_status(self, current: Optional[str]) -> Optional[str]:
+        # 根据配置概率决定订单的下一个状态
         roll = random.random()
         if current == "pending":
             if roll < self.config.pending_to_paid:
@@ -187,4 +189,5 @@ class AutomationEngine:
             return {}
 
 
+# 全局单例，供 main.py 直接引用
 engine = AutomationEngine()

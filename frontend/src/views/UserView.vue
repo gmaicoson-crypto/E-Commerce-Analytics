@@ -135,6 +135,7 @@
 </template>
 
 <script setup lang="ts">
+/* 用户分析页面。 */
 import type { EChartsOption } from 'echarts'
 import { computed, h, onMounted, ref } from 'vue'
 import AppCard from '@/components/common/AppCard.vue'

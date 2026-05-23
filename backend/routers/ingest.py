@@ -1,3 +1,5 @@
+# 数据摄入路由：供数据模拟器调用，负责 CRUD 操作并广播 SSE 事件
+
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -10,6 +12,8 @@ from services import ingest_service as svc
 
 router = APIRouter()
 
+
+# ── 请求体定义 ────────────────────────────────────────────────────────────────
 
 class CustomerIn(BaseModel):
     username: str
@@ -98,10 +102,13 @@ class BulkDeleteIn(BaseModel):
     ids: List[int]
 
 
+# ── 工具函数 ──────────────────────────────────────────────────────────────────
+
 def _ok(data: Any) -> Dict[str, Any]:
     return {"code": 200, "message": "ok", "data": data}
 
 
+# 校验模拟器 token
 def _auth(authorization: Optional[str] = Header(default=None)) -> None:
     token = settings.simulator_api_token
     if token and authorization != f"Bearer {token}":
@@ -110,6 +117,7 @@ def _auth(authorization: Optional[str] = Header(default=None)) -> None:
         )
 
 
+# 统一捕获 IngestError 并转为 HTTP 异常
 def _handle(fn):
     try:
         return fn()
@@ -124,6 +132,7 @@ def _publish(entity: str, action: str, payload: Dict[str, Any]) -> None:
     bus.publish(entity, action, payload)
 
 
+# 发布订单的关联财务/通知事件
 def _publish_order_side_effects(result: Dict[str, Any]) -> None:
     for finance in result.get("finance") or result.get("finance_added") or []:
         _publish("finance", "create", finance)
@@ -135,10 +144,14 @@ def _publish_order_side_effects(result: Dict[str, Any]) -> None:
         _publish("notification", "create", result["notif"])
 
 
+# ── 计数接口 ──────────────────────────────────────────────────────────────────
+
 @router.get("/counts", response_model=dict)
 def counts(_: None = Depends(_auth), db: Session = Depends(get_db)):
     return _ok(svc.counts(db))
 
+
+# ── 客户 CRUD ─────────────────────────────────────────────────────────────────
 
 @router.get("/customers/list", response_model=dict)
 def customers_list(
@@ -208,6 +221,8 @@ def delete_customers(
     return _ok(result)
 
 
+# ── 商品 CRUD ─────────────────────────────────────────────────────────────────
+
 @router.get("/products/list", response_model=dict)
 def products_list(
     page: int = Query(1, ge=1),
@@ -263,6 +278,8 @@ def delete_products(
         )
     return _ok(result)
 
+
+# ── 订单 CRUD ─────────────────────────────────────────────────────────────────
 
 @router.get("/orders/list", response_model=dict)
 def orders_list(
@@ -323,6 +340,8 @@ def delete_orders(
     return _ok(result)
 
 
+# ── 财务 CRUD ─────────────────────────────────────────────────────────────────
+
 @router.get("/finance/list", response_model=dict)
 def finance_list(
     page: int = Query(1, ge=1),
@@ -364,6 +383,8 @@ def delete_finance(
     _publish("finance", "delete", row)
     return _ok(row)
 
+
+# ── 通知 CRUD ─────────────────────────────────────────────────────────────────
 
 @router.get("/notifications/list", response_model=dict)
 def notifications_list(

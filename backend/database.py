@@ -5,6 +5,7 @@ from pydantic import Field
 from typing import Optional
 
 
+# 从环境变量或 .env 文件读取配置
 class Settings(BaseSettings):
     database_url: str = Field(
         default="mysql+pymysql://root:password@localhost:3306/ecommerce_db",
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
         default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL"
     )
     debug: bool = Field(default=False, alias="DEBUG")
-    # SMTP(管理员注册验证码邮件)
+    # SMTP 邮件配置（管理员注册验证码）
     smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=465, alias="SMTP_PORT")
     smtp_user: Optional[str] = Field(default=None, alias="SMTP_USER")
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# 创建数据库引擎
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
@@ -44,11 +46,14 @@ engine = create_engine(
     connect_args={"charset": "utf8mb4"},
 )
 
+# 会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# ORM 基类
 Base = declarative_base()
 
 
+# FastAPI 依赖注入用的数据库会话生成器
 def get_db():
     db = SessionLocal()
     try:

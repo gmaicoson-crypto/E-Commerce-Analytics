@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+/* 侧边导航组件 */
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { unreadCount } from '@/composables/useUnreadCount'

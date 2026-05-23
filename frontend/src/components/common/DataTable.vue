@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+/* 通用数据表格组件 */
 import { computed, ref } from 'vue'
 import AppIcon from './AppIcon.vue'
 import type { TableColumn } from '@/types'
@@ -73,11 +74,6 @@ const paged = computed(() =>
   props.pagination ? props.data.slice(offset.value, offset.value + props.pageSize) : props.data
 )
 
-// 可见页号 —— 总是显示 5 个页码,过长时中间用 '…' 占位
-//   total ≤ 6        → 全显示
-//   当前页 ≤ 3       → [1,2,3,4,5,…,N]
-//   当前页 ≥ N-2     → [1,…,N-4,N-3,N-2,N-1,N]
-//   其余(中段)      → [1,…,cur-1,cur,cur+1,…,N]
 const visiblePages = computed<(number | '...')[]>(() => {
   const total = totalPages.value
   const cur = page.value

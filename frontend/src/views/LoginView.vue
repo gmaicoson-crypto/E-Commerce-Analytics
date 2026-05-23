@@ -211,6 +211,7 @@
 </template>
 
 <script setup lang="ts">
+/* 登录与注册页面。 */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '@/components/common/AppIcon.vue'

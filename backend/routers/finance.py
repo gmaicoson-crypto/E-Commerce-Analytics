@@ -12,6 +12,8 @@ from utils import success_response, parse_date_range
 router = APIRouter()
 
 
+# 财务 KPI：收入、各项支出、净利润、利润率
+# FinanceRecord 通过订单状态机与 Order 强同步，无需关联订单表查询
 @router.get("/kpi", response_model=dict, dependencies=[Depends(check_module_permission("finance_overview"))])
 async def finance_kpi(
     date_range: str = Query("today"),
@@ -19,26 +21,17 @@ async def finance_kpi(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get finance KPI overview."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     s_dt = datetime.combine(start, datetime.min.time())
     e_dt = datetime.combine(end, datetime.max.time())
 
-    # 状态机已保证 FinanceRecord 与 Order 强同步:
-    #   - paid     → 写入 sales_income + product_cost + ad_cost
-    #   - shipped  → 写入 logistics_cost
-    #   - refunded → 删除该订单全部 finance
-    # 因此一条 SQL GROUP BY + 条件聚合即可拿齐所有 KPI。
     row = (
         db.query(
             func.coalesce(
                 func.sum(
                     case(
-                        (
-                            FinanceRecord.category == "sales_income",
-                            FinanceRecord.amount,
-                        ),
+                        (FinanceRecord.category == "sales_income", FinanceRecord.amount),
                         else_=0,
                     )
                 ),
@@ -47,10 +40,7 @@ async def finance_kpi(
             func.coalesce(
                 func.sum(
                     case(
-                        (
-                            FinanceRecord.category == "product_cost",
-                            FinanceRecord.amount,
-                        ),
+                        (FinanceRecord.category == "product_cost", FinanceRecord.amount),
                         else_=0,
                     )
                 ),
@@ -125,6 +115,7 @@ async def finance_kpi(
     )
 
 
+# 财务按分类汇总（sales_income / product_cost / logistics_cost / ad_cost / refund_out）
 @router.get("/by-category", response_model=dict, dependencies=[Depends(check_module_permission("finance_overview"))])
 async def finance_by_category(
     date_range: str = Query("today"),
@@ -132,7 +123,6 @@ async def finance_by_category(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get finance breakdown by category."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     records = (
@@ -163,6 +153,7 @@ async def finance_by_category(
     )
 
 
+# 财务按收入/支出类型汇总
 @router.get("/by-type", response_model=dict, dependencies=[Depends(check_module_permission("finance_overview"))])
 async def finance_by_type(
     date_range: str = Query("today"),
@@ -170,7 +161,6 @@ async def finance_by_type(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get finance breakdown by income/expense."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     records = (
@@ -207,18 +197,17 @@ async def finance_by_type(
     )
 
 
+# 财务趋势：按天统计收入/支出，缺失日期补零
 @router.get("/trend", response_model=dict, dependencies=[Depends(check_module_permission("finance_overview"))])
 async def finance_trend(
     days: int = Query(7, ge=1, le=90),
     db: Session = Depends(get_db),
 ):
-    """Get finance trend over time."""
     today = date.today()
-    start = today - timedelta(days=days - 1)  # 包含今天:共 days 天
+    start = today - timedelta(days=days - 1)
     s_dt = datetime.combine(start, datetime.min.time())
     e_dt = datetime.combine(today, datetime.max.time())
 
-    # 单条 SQL:按 DATE(recorded_at) 分组,一次拿齐所有天的 income / expense
     day_col = func.date(FinanceRecord.recorded_at).label("d")
     rows = (
         db.query(
@@ -262,6 +251,7 @@ async def finance_trend(
     return success_response({"period_days": days, "data": trend_data})
 
 
+# 支出项明细及占比
 @router.get("/expense-breakdown", response_model=dict, dependencies=[Depends(check_module_permission("finance_overview"))])
 async def expense_breakdown(
     date_range: str = Query("last_30_days"),
@@ -269,11 +259,6 @@ async def expense_breakdown(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get expense breakdown by category.
-
-    与 /kpi 同口径,从 FinanceRecord 表 GROUP BY category 一次取齐
-    (状态机已保证它和 Order 强同步)。
-    """
     start, end = parse_date_range(date_range, start_date, end_date)
     s_dt = datetime.combine(start, datetime.min.time())
     e_dt = datetime.combine(end, datetime.max.time())
@@ -320,16 +305,16 @@ async def expense_breakdown(
     )
 
 
+# 财务记录列表（分页 + 类型/分类/日期筛选）
 @router.get("/records", response_model=dict, dependencies=[Depends(check_module_permission("finance_overview"))])
 async def finance_records(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=10000),
     type_filter: str = Query(None, alias="type"),
     category_filter: str = Query(None, alias="category"),
-    date_filter: str = Query(None, alias="date"),  # 'YYYY-MM-DD' 仅返回当日记录
+    date_filter: str = Query(None, alias="date"),
     db: Session = Depends(get_db),
 ):
-    """Get paginated finance records."""
     query = db.query(FinanceRecord)
     if type_filter:
         query = query.filter(FinanceRecord.type == type_filter)
@@ -354,7 +339,7 @@ async def finance_records(
         .all()
     )
 
-    # 一次性把本页所有 related_order_id 对应的 order_no 取出来,避免 N+1 查询
+    # 批量查询本页关联订单号，避免 N+1 查询
     order_ids = {r.related_order_id for r in records if r.related_order_id}
     order_no_map: Dict[int, str] = {}
     if order_ids:
@@ -393,18 +378,17 @@ async def finance_records(
     )
 
 
+# 现金流分析：每日利润及累计利润
 @router.get("/cash-flow", response_model=dict, dependencies=[Depends(check_module_permission("finance_overview"))])
 async def cash_flow(
     days: int = Query(30, ge=1, le=90),
     db: Session = Depends(get_db),
 ):
-    """Get cash flow analysis."""
     today = date.today()
     start = today - timedelta(days=days)
     s_dt = datetime.combine(start, datetime.min.time())
     e_dt = datetime.combine(today, datetime.max.time())
 
-    # 单条 SQL:按 DATE(recorded_at) 分组,一次拿齐所有天的 income / expense
     day_col = func.date(FinanceRecord.recorded_at).label("d")
     rows = (
         db.query(

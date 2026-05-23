@@ -26,10 +26,12 @@ from models import (
     Refund,
 )
 
+# 大额订单通知阈值
 LARGE_ORDER_THRESHOLD = Decimal("4000")
 LOW_STOCK_DEFAULT_THRESHOLD = 10
 
 
+# 摄入层业务异常，携带 HTTP 状态码
 class IngestError(ValueError):
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
@@ -37,6 +39,7 @@ class IngestError(ValueError):
         self.status_code = status_code
 
 
+# 解析 ISO 日期字符串，为空时返回当前 UTC 时间
 def _parse_dt(value: Optional[str]) -> datetime:
     if not value:
         return datetime.utcnow()
@@ -46,6 +49,7 @@ def _parse_dt(value: Optional[str]) -> datetime:
         raise IngestError(f"Invalid datetime: {value}") from exc
 
 
+# 将字符串值转换为枚举，失败时抛出 IngestError
 def _enum(enum_cls, value, field: str):
     try:
         return enum_cls(value)
@@ -53,6 +57,7 @@ def _enum(enum_cls, value, field: str):
         raise IngestError(f"Invalid {field}: {value}") from exc
 
 
+# 将数值转换为精度 0.01 的 Decimal，失败时抛出 IngestError
 def _money(value, field: str) -> Decimal:
     try:
         return Decimal(str(value)).quantize(Decimal("0.01"))
@@ -60,10 +65,12 @@ def _money(value, field: str) -> Decimal:
         raise IngestError(f"Invalid {field}: {value}") from exc
 
 
+# 取枚举值字符串
 def _enum_value(value):
     return value.value if hasattr(value, "value") else value
 
 
+# 通用分页查询，返回 {rows, pagination}
 def _paginate(query, page: int, page_size: int):
     total = query.count()
     rows = query.offset((page - 1) * page_size).limit(page_size).all()
@@ -77,6 +84,8 @@ def _paginate(query, page: int, page_size: int):
         },
     }
 
+
+# ── 序列化函数 ────────────────────────────────────────────────────────────────
 
 def ser_customer(c: Customer) -> Dict[str, Any]:
     return {
@@ -149,6 +158,8 @@ def ser_order_item(item: OrderItem) -> Dict[str, Any]:
     }
 
 
+# ── 统计 ──────────────────────────────────────────────────────────────────────
+
 def counts(db: Session) -> Dict[str, int]:
     return {
         "customers": db.query(Customer).count(),
@@ -159,6 +170,8 @@ def counts(db: Session) -> Dict[str, int]:
         "notifications": db.query(Notification).count(),
     }
 
+
+# ── 列表查询 ──────────────────────────────────────────────────────────────────
 
 def list_customers(db: Session, page: int, page_size: int, **filters):
     q = db.query(Customer)
@@ -224,6 +237,8 @@ def list_notifications(
     }
 
 
+# ── 客户 CRUD ─────────────────────────────────────────────────────────────────
+
 def create_customer(db: Session, payload) -> Dict[str, Any]:
     c = Customer(
         username=payload.username,
@@ -271,6 +286,8 @@ def delete_customer(db: Session, customer_id: int) -> Dict[str, Any]:
     db.commit()
     return info
 
+
+# ── 商品 CRUD ─────────────────────────────────────────────────────────────────
 
 def create_product(db: Session, payload) -> Dict[str, Any]:
     p = Product(
@@ -324,11 +341,15 @@ def delete_product(db: Session, product_id: int) -> Dict[str, Any]:
     return info
 
 
+# ── 订单 CRUD ─────────────────────────────────────────────────────────────────
+
+# 生成订单编号：ORD{日期}{6位序号}
 def _order_no(db: Session, created_at: datetime) -> str:
     seq = (db.query(func.count(Order.id)).scalar() or 0) + 1
     return f"ORD{created_at.strftime('%Y%m%d')}{seq:06d}"
 
 
+# 写入一条财务记录并返回序列化结果
 def _add_finance(
     db: Session, type_, category, amount, order_id: Optional[int], recorded_at: datetime
 ) -> Dict[str, Any]:
@@ -344,6 +365,7 @@ def _add_finance(
     return ser_finance(f)
 
 
+# 写入一条通知记录并返回序列化结果
 def _add_notification(
     db: Session, ntype, title: str, content: str, created_at: datetime
 ) -> Dict[str, Any]:
@@ -355,6 +377,7 @@ def _add_notification(
     return ser_notification(n)
 
 
+# 如果订单金额超过阈值，创建大额订单通知
 def _maybe_order_notification(
     db: Session, order: Order, created_at: datetime
 ) -> Optional[Dict[str, Any]]:
@@ -428,13 +451,14 @@ def create_order(db: Session, payload) -> Dict[str, Any]:
                 subtotal=subtotal,
             )
         )
+        # 扣库存后若低于阈值，创建库存预警通知
         if product.stock <= product.low_stock_threshold:
             stock_alerts.append(
                 _add_notification(
                     db,
                     NotificationTypeEnum.stock_alert,
                     "库存预警",
-                    f"{product.product_name} 当前库存 {product.stock},低于阈值 {product.low_stock_threshold}",
+                    f"{product.product_name} 当前库存 {product.stock}，低于阈值 {product.low_stock_threshold}",
                     created_at,
                 )
             )
@@ -460,6 +484,7 @@ def create_order(db: Session, payload) -> Dict[str, Any]:
     }
 
 
+# 为已付款订单写入财务记录（sales_income / product_cost / logistics_cost）
 def _record_order_finance(
     db: Session,
     order: Order,
@@ -467,6 +492,7 @@ def _record_order_finance(
     recorded_at: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
     recorded_at = recorded_at or datetime.utcnow()
+    # 幂等：已存在财务记录则跳过
     existing = (
         db.query(FinanceRecord)
         .filter(FinanceRecord.related_order_id == order.id)
@@ -511,6 +537,7 @@ def _record_order_finance(
     ]
 
 
+# 更新订单状态（按状态机流转，不合法的转换抛出 IngestError）
 def update_order_status(db: Session, order_id: int, status: str) -> Dict[str, Any]:
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -565,6 +592,8 @@ def delete_order(db: Session, order_id: int) -> Dict[str, Any]:
     return info
 
 
+# ── 财务 CRUD ─────────────────────────────────────────────────────────────────
+
 def create_finance(db: Session, payload) -> Dict[str, Any]:
     info = _add_finance(
         db,
@@ -603,6 +632,8 @@ def delete_finance(db: Session, finance_id: int) -> Dict[str, Any]:
     return info
 
 
+# ── 通知 CRUD ─────────────────────────────────────────────────────────────────
+
 def create_notification(db: Session, payload) -> Dict[str, Any]:
     info = _add_notification(
         db,
@@ -638,6 +669,9 @@ def delete_notification(db: Session, notification_id: int) -> Dict[str, Any]:
     return info
 
 
+# ── 批量删除 ──────────────────────────────────────────────────────────────────
+
+# 对 ids 列表逐条调用 fn 删除，跳过失败项并记录原因
 def delete_many(fn, db: Session, ids: Iterable[int]) -> Dict[str, Any]:
     deleted = []
     skipped = []

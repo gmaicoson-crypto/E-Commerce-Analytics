@@ -16,6 +16,7 @@ from utils import (
 router = APIRouter()
 
 
+# 销售概览 KPI：总销售额、订单数、客单价及环比变化
 @router.get("/overview", response_model=dict, dependencies=[Depends(check_module_permission("sales_overview"))])
 async def sales_overview(
     date_range: str = Query("today"),
@@ -23,11 +24,9 @@ async def sales_overview(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get sales overview KPIs."""
     start, end = parse_date_range(date_range, start_date, end_date)
     prev_start, prev_end = get_prev_period(start, end)
 
-    # Current period stats
     orders_current = (
         db.query(Order)
         .filter(
@@ -45,7 +44,6 @@ async def sales_overview(
     completed_orders = [o for o in orders_current if o.status == "completed"]
     completed_sales = sum(o.total_amount for o in completed_orders) or Decimal(0)
 
-    # Previous period stats for comparison
     orders_prev = (
         db.query(Order)
         .filter(
@@ -59,7 +57,6 @@ async def sales_overview(
     total_sales_prev = sum(o.total_amount for o in orders_prev) or Decimal(0)
     order_count_prev = len(orders_prev)
 
-    # Calculate change rates
     sales_change = (
         ((total_sales - total_sales_prev) / total_sales_prev * 100)
         if total_sales_prev
@@ -85,14 +82,14 @@ async def sales_overview(
     )
 
 
+# 销售趋势：按天 GROUP BY，缺失日期补零
 @router.get("/trend", response_model=dict, dependencies=[Depends(check_module_permission("sales_overview"))])
 async def sales_trend(
     days: int = Query(7, ge=1, le=90),
     db: Session = Depends(get_db),
 ):
-    """Get sales trend data - 单条 SQL GROUP BY DATE,补齐缺失日。"""
     today = date.today()
-    start = today - timedelta(days=days - 1)  # 包含今天:start..today 共 days 天
+    start = today - timedelta(days=days - 1)
 
     rows = (
         db.query(
@@ -109,7 +106,6 @@ async def sales_trend(
         .all()
     )
 
-    # 用聚合结果建索引,然后按天补齐(没有订单的日子返回 0)
     by_day = {
         r.day.isoformat() if hasattr(r.day, "isoformat") else str(r.day): r
         for r in rows
@@ -132,6 +128,7 @@ async def sales_trend(
     return success_response({"period_days": days, "data": trend_data})
 
 
+# 按商品品类统计销售额
 @router.get("/by-category", response_model=dict, dependencies=[Depends(check_module_permission("sales_overview"))])
 async def sales_by_category(
     date_range: str = Query("today"),
@@ -139,7 +136,6 @@ async def sales_by_category(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get sales breakdown by product category - 单条 SQL GROUP BY."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     rows = (
@@ -183,6 +179,7 @@ async def sales_by_category(
     )
 
 
+# 按新老客类型统计销售额（实时按注册时间判定）
 @router.get("/by-customer-type", response_model=dict, dependencies=[Depends(check_module_permission("sales_overview"))])
 async def sales_by_customer_type(
     date_range: str = Query("today"),
@@ -190,7 +187,6 @@ async def sales_by_customer_type(
     end_date: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get sales breakdown by customer type."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     orders = (
@@ -207,7 +203,6 @@ async def sales_by_customer_type(
     for order in orders:
         customer = order.customer
         if customer:
-            # 改用 registered_at 实时判定:注册 ≤ 30 天为 new,> 30 天为 returning
             ctype = customer_type_label(customer.registered_at)
             if ctype not in type_sales:
                 type_sales[ctype] = {"sales": Decimal(0), "order_count": 0}
@@ -233,6 +228,7 @@ async def sales_by_customer_type(
     )
 
 
+# 销售额 TOP-N 商品排行
 @router.get("/top-products", response_model=dict, dependencies=[Depends(check_module_permission("sales_overview"))])
 async def top_products(
     date_range: str = Query("today"),
@@ -241,7 +237,6 @@ async def top_products(
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    """Get top selling products."""
     start, end = parse_date_range(date_range, start_date, end_date)
 
     items = (

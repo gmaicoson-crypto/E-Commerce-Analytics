@@ -8,6 +8,7 @@ from utils import success_response
 router = APIRouter()
 
 
+# 通知列表（分页，可按已读状态筛选）
 @router.get("/list", response_model=dict, dependencies=[Depends(get_current_user)])
 async def get_notifications(
     page: int = Query(1, ge=1),
@@ -15,7 +16,6 @@ async def get_notifications(
     is_read: bool = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get notifications list with pagination."""
     query = db.query(Notification)
 
     if is_read is not None:
@@ -54,20 +54,19 @@ async def get_notifications(
     )
 
 
+# 未读通知数量
 @router.get("/unread-count", response_model=dict, dependencies=[Depends(get_current_user)])
 async def unread_count(db: Session = Depends(get_db)):
-    """Get count of unread notifications."""
     count = db.query(Notification).filter(Notification.is_read == 0).count()
     return success_response({"unread_count": count})
 
 
-# 注意:/batch/* 必须在 /{notification_id}/... 之前注册,否则 FastAPI 会先用
-#       /{notification_id} 的 int 校验吞掉 "batch" 字面量 → 422
+# 批量标记为已读（ids 为空时标记全部未读）
+# 注意：/batch/* 路由必须在 /{notification_id}/... 之前注册，避免路由匹配冲突
 @router.patch("/batch/read", response_model=dict, dependencies=[Depends(get_current_user)])
 async def mark_batch_as_read(
     request: dict, db: Session = Depends(get_db)
 ):
-    """Mark multiple notifications as read. ids=[] 表示全部未读标记为已读。"""
     notification_ids = request.get("notification_ids", [])
 
     if notification_ids:
@@ -77,7 +76,6 @@ async def mark_batch_as_read(
             .update({"is_read": 1}, synchronize_session=False)
         )
     else:
-        # 兜底:没传 ids 时一次性标记全部未读
         affected = (
             db.query(Notification)
             .filter(Notification.is_read == 0)
@@ -90,11 +88,11 @@ async def mark_batch_as_read(
     )
 
 
+# 批量删除通知
 @router.delete("/batch", response_model=dict, dependencies=[Depends(get_current_user)])
 async def delete_batch(
     request: dict, db: Session = Depends(get_db)
 ):
-    """Delete multiple notifications."""
     notification_ids = request.get("notification_ids", [])
 
     if not notification_ids:
@@ -112,9 +110,9 @@ async def delete_batch(
     return success_response({"count": count}, message="Notifications deleted")
 
 
+# 按类型统计通知数量及已读/未读情况
 @router.get("/stats/by-type", response_model=dict, dependencies=[Depends(get_current_user)])
 async def notification_stats_by_type(db: Session = Depends(get_db)):
-    """Get notification statistics by type."""
     notifications = db.query(Notification).all()
 
     type_stats = {}
@@ -141,12 +139,12 @@ async def notification_stats_by_type(db: Session = Depends(get_db)):
     return success_response(data)
 
 
+# 获取单条通知详情
 @router.get("/{notification_id}", response_model=dict, dependencies=[Depends(get_current_user)])
 async def get_notification(
     notification_id: int,
     db: Session = Depends(get_db),
 ):
-    """Get single notification details."""
     notification = (
         db.query(Notification).filter(Notification.id == notification_id).first()
     )
@@ -170,12 +168,12 @@ async def get_notification(
     return success_response(notif_data)
 
 
+# 单条通知标记为已读
 @router.patch("/{notification_id}/read", response_model=dict, dependencies=[Depends(get_current_user)])
 async def mark_as_read(
     notification_id: int,
     db: Session = Depends(get_db),
 ):
-    """Mark single notification as read."""
     notification = (
         db.query(Notification).filter(Notification.id == notification_id).first()
     )
@@ -194,12 +192,12 @@ async def mark_as_read(
     )
 
 
+# 删除单条通知
 @router.delete("/{notification_id}", response_model=dict, dependencies=[Depends(get_current_user)])
 async def delete_notification(
     notification_id: int,
     db: Session = Depends(get_db),
 ):
-    """Delete a notification."""
     notification = (
         db.query(Notification).filter(Notification.id == notification_id).first()
     )

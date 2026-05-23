@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+/* 图例项组件 */
 defineProps<{
   color: string
   label: string

@@ -3,6 +3,7 @@
 </template>
 
 <script setup lang="ts">
+/* 通用徽标组件 */
 import { computed } from 'vue'
 import type { BadgeColor } from '@/types'
 import { BADGE_MAP } from '@/utils/constants'

@@ -29,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+/* 表格列文本筛选组件 */
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps<{

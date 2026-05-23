@@ -1,10 +1,7 @@
-/**
- * 按需加载并向 ECharts 注册中国地图 GeoJSON(DataV 公开 CDN)。
- * 只 fetch 一次,后续调用复用 Promise。
- */
+/* 中国地图数据加载工具 */
+
 import * as echarts from 'echarts'
 
-// 本地公开静态资源,首次进入用户分析页时拉一次
 const CHINA_MAP_URL = '/china.json'
 
 let promise: Promise<void> | null = null
@@ -34,7 +31,6 @@ export function ensureChinaMap(): Promise<void> {
   return promise
 }
 
-// 短省名 → GeoJSON 中的完整省名映射
 export const PROVINCE_FULL_NAME: Record<string, string> = {
   北京: '北京市',
   上海: '上海市',
