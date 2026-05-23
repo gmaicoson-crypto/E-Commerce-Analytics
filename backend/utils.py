@@ -1,15 +1,19 @@
-from datetime import datetime, date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Tuple, Optional, Any, Dict
 
 # 注册超过此天数视为老客
 NEW_CUSTOMER_DAYS = 15
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 # 判断客户是否为老客（注册超过 NEW_CUSTOMER_DAYS 天）
 def is_returning_customer(registered_at: Optional[datetime]) -> bool:
     if registered_at is None:
         return False
-    return (datetime.utcnow() - registered_at) > timedelta(days=NEW_CUSTOMER_DAYS)
+    return (utc_now() - registered_at) > timedelta(days=NEW_CUSTOMER_DAYS)
 
 
 # 返回客户类型字符串：'new' 或 'returning'
@@ -19,7 +23,7 @@ def customer_type_label(registered_at: Optional[datetime]) -> str:
 
 # 获取新老客判定时间阈值，registered_at 小于此值即为老客
 def new_customer_threshold() -> datetime:
-    return datetime.utcnow() - timedelta(days=NEW_CUSTOMER_DAYS)
+    return utc_now() - timedelta(days=NEW_CUSTOMER_DAYS)
 
 
 # 解析日期范围参数，返回 (start_date, end_date) 元组

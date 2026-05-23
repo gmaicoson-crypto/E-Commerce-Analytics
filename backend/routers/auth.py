@@ -3,7 +3,7 @@ import random
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 from database import get_db
 from auth import verify_password, create_access_token, hash_password
@@ -22,6 +22,10 @@ from utils import success_response
 router = APIRouter()
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 当前用户资料更新请求体
@@ -55,7 +59,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         if verify_password(request.password, admin.password_hash) and admin.is_active:
             user = admin
             role = "admin"
-            admin.last_login_at = datetime.utcnow()
+            admin.last_login_at = utc_now()
             db.commit()
 
     # 再匹配员工表
@@ -72,7 +76,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             ):
                 user = employee
                 role = "employee"
-                employee.last_login_at = datetime.utcnow()
+                employee.last_login_at = utc_now()
                 db.commit()
 
     if not user:
@@ -134,7 +138,7 @@ async def admin_send_code(body: SendCodeRequest, db: Session = Depends(get_db)):
     if db.query(Admin).filter(Admin.email == email).first():
         raise HTTPException(400, "该邮箱已注册")
 
-    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    cutoff = utc_now() - timedelta(seconds=60)
     recent = (
         db.query(AdminVerificationCode)
         .filter(
@@ -150,7 +154,7 @@ async def admin_send_code(body: SendCodeRequest, db: Session = Depends(get_db)):
     rec = AdminVerificationCode(
         email=email,
         code=code,
-        expires_at=datetime.utcnow() + timedelta(minutes=10),
+        expires_at=utc_now() + timedelta(minutes=10),
     )
     db.add(rec)
     db.commit()
@@ -194,7 +198,7 @@ async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_d
             AdminVerificationCode.email == email,
             AdminVerificationCode.code == body.code,
             AdminVerificationCode.used_at.is_(None),
-            AdminVerificationCode.expires_at >= datetime.utcnow(),
+            AdminVerificationCode.expires_at >= utc_now(),
         )
         .order_by(AdminVerificationCode.id.desc())
         .first()
@@ -209,7 +213,7 @@ async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_d
         is_active=True,
     )
     db.add(admin)
-    rec.used_at = datetime.utcnow()
+    rec.used_at = utc_now()
     db.commit()
     db.refresh(admin)
     return success_response(

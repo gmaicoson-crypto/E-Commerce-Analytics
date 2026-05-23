@@ -15,7 +15,7 @@ load_dotenv(BACKEND_DIR / ".env")
 # 解析数据库连接信息
 url = make_url(
     os.environ.get(
-        "DATABASE_URL", "mysql+pymysql://root:password@localhost:3306/ecommerce_db"
+        "DATABASE_URL", "mysql+pymysql://root:password@localhost:3306/E-Commerce-Analytics_db"
     )
 )
 host = url.host or "127.0.0.1"

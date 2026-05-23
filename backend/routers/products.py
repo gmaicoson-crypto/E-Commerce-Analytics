@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from database import get_db
 from dependencies import check_module_permission, get_current_user
@@ -11,6 +11,10 @@ from models import CategoryEnum, Product, ProductStatusEnum, Order, OrderItem, O
 from utils import success_response, parse_date_range
 
 router = APIRouter()
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 创建商品请求体
@@ -131,7 +135,7 @@ async def product_manage_create(
         stock=body.stock,
         low_stock_threshold=body.low_stock_threshold,
         status=_status(body.status),
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     db.add(product)
     db.commit()

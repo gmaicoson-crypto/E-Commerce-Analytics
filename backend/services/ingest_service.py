@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -31,6 +31,10 @@ LARGE_ORDER_THRESHOLD = Decimal("4000")
 LOW_STOCK_DEFAULT_THRESHOLD = 10
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 # 摄入层业务异常，携带 HTTP 状态码
 class IngestError(ValueError):
     def __init__(self, message: str, status_code: int = 400) -> None:
@@ -42,7 +46,7 @@ class IngestError(ValueError):
 # 解析 ISO 日期字符串，为空时返回当前 UTC 时间
 def _parse_dt(value: Optional[str]) -> datetime:
     if not value:
-        return datetime.utcnow()
+        return utc_now()
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
     except ValueError as exc:
@@ -491,7 +495,7 @@ def _record_order_finance(
     cost_total: Optional[Decimal] = None,
     recorded_at: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
-    recorded_at = recorded_at or datetime.utcnow()
+    recorded_at = recorded_at or utc_now()
     # 幂等：已存在财务记录则跳过
     existing = (
         db.query(FinanceRecord)
@@ -554,7 +558,7 @@ def update_order_status(db: Session, order_id: int, status: str) -> Dict[str, An
         order.status, set()
     ):
         raise IngestError("Invalid order status transition")
-    now = datetime.utcnow()
+    now = utc_now()
     order.status = new_status
     if (
         new_status

@@ -108,7 +108,7 @@ backend/
 ### `utils.py` — 工具函数
 
 - `parse_date_range`：将前端传入的日期范围参数（`"7"`/`"30"`/`"90"`/`"today"`/`"custom"`）解析为 `(start_date, end_date)` 元组。
-- `get_prev_period`：计算同等时长的上一周期，用于同比（YoY）计算。
+- `get_prev_period`：计算同等时长的上一周期，用于同比计算。
 - `is_returning_customer` / `customer_type_label` / `new_customer_threshold`：基于注册时间（15 天阈值）动态判定新老客户类型。
 - `success_response` / `error_response`：生成统一格式的 JSON 响应体 `{code, message, data}`。
 
@@ -272,24 +272,26 @@ python _alter_finance_category.py
 复制 `.env.example` 为 `.env` 并填写实际值：
 
 ```env
-# 数据库
+# 数据库配置
 DATABASE_URL=mysql+pymysql://root:password@localhost:3306/ecommerce_db
 
-# JWT（生产环境务必更换为随机长字符串）
-SECRET_KEY=your-256-bit-secret-key
+# JWT 配置（开发环境可以不设置）
+SECRET_KEY=your-256-bit-secret-key-change-this-in-production
 ACCESS_TOKEN_EXPIRE_HOURS=24
 
-# SMTP（管理员注册验证码邮件，不配置则注册功能不可用）
-SMTP_HOST=smtp.163.com
-SMTP_PORT=465
-SMTP_USER=yourname@163.com
-SMTP_PASS=your-auth-code
+# 开发调试配置
+DEBUG=False
 
-# 模拟器鉴权 Token（不设置则 /api/ingest/* 接口无需鉴权）
+# SMTP（管理员注册验证码邮件，不配置则注册功能不可用
+SMTP_HOST=smtp.xx.com
+SMTP_PORT=465
+SMTP_USER=your-email.com
+SMTP_PASS=邮箱的授权码
+SMTP_FROM=your-email.com
+
+# 模拟器鉴权 Token（不设置则 /api/ingest/* 接口无需鉴权，可以不设置）
 SIMULATOR_API_TOKEN=your-simulator-token
 
-# DeepSeek AI（预留，暂未启用）
-DEEPSEEK_API_KEY=sk-xxx
 ```
 
 ---

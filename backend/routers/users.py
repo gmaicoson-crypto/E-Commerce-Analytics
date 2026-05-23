@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 from database import get_db
@@ -10,6 +10,10 @@ from models import Customer, Order
 from utils import success_response, new_customer_threshold, customer_type_label
 
 router = APIRouter()
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 客户列表（分页 + 筛选，新老客按注册时间实时判定）
@@ -219,7 +223,7 @@ async def user_growth(
 # RFM 分析（最近购买、购买频次、消费金额）
 @router.get("/rfm-analysis", response_model=dict, dependencies=[Depends(check_module_permission("user_analysis"))])
 async def rfm_analysis(db: Session = Depends(get_db)):
-    today = datetime.utcnow()
+    today = utc_now()
     reference_date = today.date()
 
     customers = db.query(Customer).all()

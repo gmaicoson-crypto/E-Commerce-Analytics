@@ -1,20 +1,21 @@
-# SQL Files
+# SQL 文件说明
 
-This directory keeps project-maintained SQL outside Python code.
+这个目录用于存放项目维护的 SQL 文件，将 SQL 与 Python 代码分开管理。
 
-## Files
+## 文件列表
 
 - `create_database.sql`
-  - Used by `backend/setup_db.py`.
-  - Creates the MySQL database/schema if it does not already exist.
+  - 供 `backend/setup_db.py` 使用。
+  - 用于在数据库不存在时创建 MySQL 数据库 / schema。
 
 - `alter_finance_category_enum.sql`
-  - Used by `backend/_alter_finance_category.py`.
-  - Extends `finance_records.category` enum values.
+  - 供 `backend/_alter_finance_category.py` 使用。
+  - 用于扩展 `finance_records.category` 的枚举值。
 
 - `reset_business_data.sql`
-  - Manual maintenance SQL for clearing demo business data while keeping account and permission tables.
+  - 手动维护用 SQL。
+  - 用于清空演示业务数据，同时保留账号和权限相关表。
 
-## Rule
+## 约定
 
-When SQL changes are needed, add or update a `.sql` file here and keep Python scripts as thin executors.
+当需要调整 SQL 逻辑时，优先在这里新增或修改 `.sql` 文件，Python 脚本只保留为轻量执行器。

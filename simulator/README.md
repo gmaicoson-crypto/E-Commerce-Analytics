@@ -184,7 +184,7 @@ shipped（已发货）
 | --- | --- | --- |
 | `PROVINCES` | 34 个省份/直辖市 | 客户注册地 |
 | `CATEGORIES` | 5 个商品分类 | 商品分类（电子产品/服装/食品/家居/运动） |
-| `AGE_GROUPS` | 4 个年龄段 | 客户画像 |
+| `AGE_GROUPS` | 4 个年龄段 | 客户年龄分类 |
 | `GENDERS` | 男/女 | 客户性别 |
 | `CUSTOMER_TYPES` | 新客/老客 | 客户类型 |
 | `ORDER_STATUSES` | 5 种状态 | 订单状态枚举 |
@@ -321,7 +321,7 @@ completed/cancelled/refunded → 不可修改（只读）
 
 ### `static/style.css` — 样式文件
 
-绿白主题（与前端 Vue 应用色系一致），约 176 行：
+绿白主题（与前端 Vue 应用色系一致）：
 
 | 样式块 | 说明 |
 | --- | --- |
@@ -362,41 +362,3 @@ BACKEND_INGEST_TOKEN=your_secret_token_here
 ```
 
 ---
-
-## 附：相关工具目录
-
-项目中还有两个独立的数据工具位于 `data-simulator/`（位于项目根目录外）：
-
-### `data-simulator/data_generator/` — 数据库初始化种子脚本
-
-一次性运行的数据库初始化工具，**不依赖 Simulator 服务**，直接写 MySQL：
-
-| 文件 | 说明 |
-| --- | --- |
-| `seed.py` | 主脚本：建库建表 → 插入 2 位管理员、3 位员工、500 种商品、2000 位客户、约 2700 条近 90 天订单及关联的订单项、退款、财务记录、通知 |
-| `models.py` | SQLAlchemy ORM 模型（与 `backend/models.py` 结构一致，独立副本） |
-| `database.py` | SQLAlchemy 引擎配置 + 自动建库工具函数 |
-| `auth.py` | pbkdf2_sha256 密码哈希（与 backend/auth.py 一致） |
-| `requirements.txt` | SQLAlchemy、PyMySQL、passlib 等依赖 |
-
-默认生成的账号：
-
-| 角色 | 账号 | 密码 |
-| --- | --- | --- |
-| 管理员 | `admin01@example.com` | `admin123` |
-| 管理员 | `admin02@example.com` | `admin123` |
-| 员工 | `employee01@example.com` | `emp123` |
-| 员工 | `employee02@example.com` | `emp123` |
-| 员工 | `employee03@example.com` | `emp123` |
-
-运行方式：
-
-```bash
-cd data-simulator/data_generator
-pip install -r requirements.txt
-python seed.py
-```
-
-### `data-simulator/data_loadborad/` — 实时数据控制台
-
-纯静态网页工具（无需后端 Simulator），双击 `index.html` 直接在浏览器打开，直接调用 backend `/api/ingest/*` 接口进行数据操作。功能覆盖销售概览、商品分析、用户分析、订单分析、财务概览、通知中心 6 个操作面板，支持批量操作和 SSE 驱动的自动刷新。

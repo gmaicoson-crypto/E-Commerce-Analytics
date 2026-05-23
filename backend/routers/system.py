@@ -2,7 +2,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 from database import get_db
 from dependencies import require_admin
@@ -19,6 +19,10 @@ from utils import success_response, error_response
 router = APIRouter()
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 创建员工请求体
@@ -159,7 +163,7 @@ async def create_employee(
         email=body.email,
         password_hash=hash_password(body.password),
         is_active=True,
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     db.add(emp)
     db.commit()
@@ -258,7 +262,7 @@ async def update_employee_permissions(
                 employee_id=employee_id,
                 module_id=module.id,
                 is_active=True,
-                granted_at=datetime.utcnow(),
+                granted_at=utc_now(),
                 granted_by=current_user.id,
             )
             db.add(perm)
@@ -278,7 +282,7 @@ async def update_employee_permissions(
             return error_response("Permission not found or already revoked", 404)
 
         existing.is_active = False
-        existing.revoked_at = datetime.utcnow()
+        existing.revoked_at = utc_now()
         existing.revoked_by = current_user.id
 
     # 记录权限变更日志
@@ -287,7 +291,7 @@ async def update_employee_permissions(
         target_user_id=employee_id,
         module_id=module.id,
         action=action,
-        changed_at=datetime.utcnow(),
+        changed_at=utc_now(),
     )
     db.add(log)
     db.commit()
